@@ -149,6 +149,16 @@ def test_fix_is_remembered_and_captions_use_the_cut_spelling():
         assert words[1]["text"] == "Haiku" and (Path(d) / "captions.txt").exists(), words
 
 
+def test_a_thai_vowel_sign_survives_the_spelling_swap():
+    """A word is spelled the way the cut has it, and strip() trims the punctuation off it before the swap.
+    Thai vowel signs and tone marks are Mn, which Python's \\W matches too, so a plain \\W strip ate them
+    off the edge: strip("ห้") was "ห", and swapping into "ห้" then rejoined after the mark, "5้"."""
+    cut = [{"text": "5", "start": 0.0, "end": 0.4, "type": "word"}]
+    heard = [{"text": "ห้", "start": 0.0, "end": 0.2, "type": "word"},
+             {"text": "า", "start": 0.2, "end": 0.4, "type": "word"}]
+    assert [w["text"] for w in R.caption_words(heard, cut)[0]] == ["5"], R.caption_words(heard, cut)[0]
+
+
 def test_a_multi_word_correction_is_one_token_per_word():
     """The cut says "are using." where the re-transcription heard one word "use.": two caption tokens that share
     the heard word's time without overlapping, never one "are using." token (rendered "areusing")."""

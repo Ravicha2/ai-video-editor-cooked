@@ -112,7 +112,12 @@ export const loadFamily = (name: string | undefined, weights: number[]): Promise
     cache.set(key, entry.load().then(async (font) => {
       const have = Object.keys(font.getInfo().fonts.normal ?? {}).map(Number);
       const near = (w: number) => (have.length ? have.reduce((a, b) => (Math.abs(b - w) < Math.abs(a - w) ? b : a)) : w);
-      const loaded = font.loadFont("normal", { weights: [...new Set(weights.map((w) => String(near(w))))], subsets: ["latin"] });
+      // A subset is its own download, and "latin" alone leaves the family with no Thai glyphs: Thai text then
+      // falls through to a system font, which this laptop has and a render container does not, so every Thai
+      // character came out a tofu box on the render but looked right in the stills. Ask for the subsets the
+      // font actually declares, so a latin-only face (Archivo Black) is unchanged.
+      const subsets = ["latin", "thai"].filter((s) => font.getInfo().subsets.includes(s));
+      const loaded = font.loadFont("normal", { weights: [...new Set(weights.map((w) => String(near(w))))], subsets });
       await loaded.waitUntilDone();
       return `'${loaded.fontFamily}', system-ui, sans-serif`;
     }).catch((e) => {

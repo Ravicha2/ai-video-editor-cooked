@@ -15,6 +15,15 @@ const serveUrl = await bundle({ entryPoint: path.join(HERE, "..", "src", "index.
 for (const c of cases) {
   const inputProps = { width: 1080, height: 1920, dur: 4, ...c, card: { start: 0, end: c.dur ?? 4, entrance: "pop", ...c.card } };
   const composition = await selectComposition({ serveUrl, id: "Preview", inputProps });
+  // export_nle's card renders pin the plan's fps/frames; Preview must honour them, not assume 30.
+  if (c.fps || c.frames) {
+    const fps = c.fps ?? 30;
+    const frames = c.frames ?? Math.round((c.dur ?? 4) * fps);
+    if (composition.fps !== fps || composition.durationInFrames !== frames) {
+      throw new Error(`${c.name}: Preview is ${composition.fps} fps / ${composition.durationInFrames} frames, want ${fps} / ${frames}`);
+    }
+  }
+  if (flag === "--check") { console.log("ok", c.name); continue; }   // props/metadata only: no stills, no mp4
   const n = composition.durationInFrames;
   for (const [i, f] of [0.12, 0.3, 0.55, 0.85].entries()) {
     await renderStill({ serveUrl, composition, inputProps, output: path.join(outDir, "stills", `${c.name}-${i}.png`), frame: Math.floor(n * f) });

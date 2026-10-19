@@ -3,6 +3,16 @@
 What changed for every user, newest first.
 
 ## Unreleased
+- Thai captions fill a line by width instead of word count, and a page never splits a word. Thai vowel signs
+  and tone marks stay attached.
+- A Thai vowel sign now survives the spelling swap in the cut.
+- Transcript comparison folds Latin accents, so "Garçons" matches "Garcons", and keeps Thai text instead of
+  dropping it.
+- The render benchmark works at 59.94 fps; Remotion rejects a fractional frame range.
+- Card previews use the plan's frame rate and length, so moving cards render correctly at 59.94 fps.
+- A caption style that already brings a stroke or box no longer gets a dark plate painted behind it.
+- The caption contrast check reads inside a stroked caption's outline instead of the footage beyond it.
+- Fonts load the Thai subset when the family has it, so Thai text is not tofu boxes on the render machine.
 
 - A video's versions are one Version dropdown beside Watch and Compare, so long names no longer squeeze the player bar.
 - A finished reel gets a Trial reels tab: Claude's spare hooks and versions, a type menu per version (pick several, or let Claude decide), Add a version, Ask Claude, and Make. Trial reels list under their own heading in the Version dropdown.

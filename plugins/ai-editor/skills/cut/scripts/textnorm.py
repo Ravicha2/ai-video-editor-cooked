@@ -16,6 +16,7 @@ Rules, deliberately narrow:
 """
 import json
 import re
+import unicodedata
 
 UNITS = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
          "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
@@ -38,7 +39,15 @@ def norm(s):
     # Thousands separators die BEFORE punctuation becomes whitespace, or a transcriber's
     # "1,500" splits into "1" and "500" and never matches "fifteen hundred".
     s = re.sub(r"(?<=\d),(?=\d)", "", s)
-    return re.sub(r"[^a-z0-9' ]+", " ", s).strip()
+    # Accents are the same formatting noise as punctuation, and transcribers disagree about them:
+    # "Garcons" in one pass, "Garcons" with a cedilla in the next. Without folding, that lone mark
+    # splits the word in two ("gar" + "ons"), so a quote written from the other pass never matches.
+    # Latin diacritics decompose into U+0300-U+036F and drop out here; Thai marks do not.
+    s = "".join(c for c in unicodedata.normalize("NFD", s) if not "\u0300" <= c <= "\u036f")
+    # Thai (U+0E00-U+0E7F) rides along: a script with no spaces between words arrives as
+    # one fragment a token, and without its own range every Thai quote normed to "" and
+    # never matched. Vowels and tone marks are in that block, so keep the whole range.
+    return re.sub(r"[^a-z0-9' ฀-๿]+", " ", s).strip()
 
 
 def canon(toks):

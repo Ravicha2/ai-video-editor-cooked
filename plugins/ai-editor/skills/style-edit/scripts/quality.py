@@ -118,6 +118,16 @@ def ratio(a, b):
     return (hi + 0.05) / (lo + 0.05)
 
 
+def ring_px(stroked, ch):
+    """The ring is what is drawn right around the glyph: the stroke when there is one (Captions.tsx draws
+    0.1 em across, so only its outer half, 0.05 em, shows past the fill), else the footage. 0.08 em sampled
+    past a 0.05 em stroke, so the ring measured the footage beyond the outline: an outlined caption over a
+    bright garment bag read 1.79:1 while every glyph of it had a black edge. Inside the stroke, as the
+    self-test's 3 px stroke with a 2 px ring does. A thin stroke (a small caption's max(2, size * 0.1)) is
+    still measured against the footage: `max(2, ...)` reaches past it."""
+    return max(2, round((0.03 if stroked else 0.12) * ch))
+
+
 def worst_contrast(rgb, text, ring_px):
     """Text pixels (mask) against the ring around them, at the ring's worst: its 90th percentile
     toward the text's own luminance. One bright patch under one word is what stops it reading."""
@@ -1119,11 +1129,9 @@ def run(edit, plan, video, plan_path, style=None, cuts=(), brand=None):
         rows, fill, touches = got
         if touches:
             edge_hits.append(t)
-        # the ring is what is drawn right around the glyph: the stroke when there is one
-        # (Captions.tsx: 0.1 em, half of it outside the fill; plan.py's contrast "treat" draws one too),
-        # else the footage
+        # the ring is what is drawn right around the glyph: the stroke when there is one, else the footage
         stroked = cs.get("stroke") or chunk.get("treat") in ("stroke", "backing")
-        cr = worst_contrast(frame[rows], fill, max(2, round((0.08 if stroked else 0.12) * ch)))
+        cr = worst_contrast(frame[rows], fill, ring_px(stroked, ch))
         if cr is not None:
             worst_cap.append((cr, t))
     if worst_cap:
@@ -1331,6 +1339,8 @@ def demo():
     assert rows.start < 600 < rows.stop and not touches and not fill[:, :40].any()
     assert worst_contrast(fr[rows], fill, 2) > 10                      # against its stroke
     assert worst_contrast(fr[rows], fill, 6) < CONTRAST_WARN            # reaching past it, into the grey
+    # a stroked caption's ring samples inside the stroke: 0.03 em, not the 0.08 em that reached the footage
+    assert ring_px(True, 100) == 3 and ring_px(True, 36) == 2
     # caption_lines: one line at the caption's y reads 1; the same page wrapped to two lines reads 2
     one = np.full((960, 540, 3), 90, np.uint8)
     cv2.putText(one, "down competitor ads", (40, 612), cv2.FONT_HERSHEY_DUPLEX, 1.4, (255, 255, 255), 4)

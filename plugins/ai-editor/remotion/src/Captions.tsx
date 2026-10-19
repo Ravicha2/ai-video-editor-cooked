@@ -72,6 +72,12 @@ const BAND_HOLD_S = 1.0;   // the contrast band holds across a gap between capti
 
 const casing = (s: string, c?: string) => (c === "lower" ? s.toLowerCase() : c === "upper" ? s.toUpperCase() : s);
 
+/** Thai is written without spaces between words and the transcriber hands it back in pieces of them, so
+ *  two Thai pieces are one word: a space there draws "อันดับ" as "อั น ดั บ". Keep the space elsewhere.
+ *  plan.py caption_text() is the same rule; they must agree or the fit measures a different line. */
+const THAI = /[฀-๿]/;
+const glue = (a: string, b: string) => (THAI.test(a.slice(-1)) && THAI.test(b[0]) ? "" : " ");
+
 /** One caption page at time t (seconds on the same clock as the chunk). */
 export const CaptionLine: React.FC<{ style: CaptionStyle; chunk: Chunk; t: number; family: string; m: Motion; boxW: number; maxSize: number }> =
   ({ style, chunk, t, family, m, boxW, maxSize }) => {
@@ -93,7 +99,7 @@ export const CaptionLine: React.FC<{ style: CaptionStyle; chunk: Chunk; t: numbe
     // one size per page, on one line unless the style asks for more: fitted at the stressed word's weight with
     // room for the active word's scale, and never wrapped
     const segs: string[] = [];   // the page's lines, the big word's line left out (it is fitted on its own)
-    words.forEach((w, i) => { if (i === bi) return; if (!segs.length || breaks.has(i) || i === bi + 1) segs.push(w.text); else segs[segs.length - 1] += ` ${w.text}`; });
+    words.forEach((w, i) => { if (i === bi) return; if (!segs.length || breaks.has(i) || i === bi + 1) segs.push(w.text); else segs[segs.length - 1] += glue(words[i - 1].text, w.text) + w.text; });
     const fit = (text: string, max: number) => fitTextOnNLines({ text, maxLines: lines, maxBoxWidth: boxW / activeScale, fontFamily: family,
       fontWeight: heavy, maxFontSize: max }).fontSize * 0.96;
     const size = segs.length ? fit(segs.reduce((a, b) => (b.length > a.length ? b : a)), maxSize * (brk > 0 ? STACK_K : 1)) : maxSize;
@@ -132,7 +138,7 @@ export const CaptionLine: React.FC<{ style: CaptionStyle; chunk: Chunk; t: numbe
             : tr === "stroke" || tr === "backing" ? `${Math.max(2, size * 0.1)}px ${tc}` : undefined;
           return (
             <React.Fragment key={i}>
-              {i ? (breaks.has(i) ? <br /> : " ") : null}
+              {i ? (breaks.has(i) ? <br /> : glue(words[i - 1].text, w.text)) : null}
               <span style={{ display: "inline-block", position: "relative", transform: `translateY(${-lift * a + (1 - rev) * size * 0.35}px) scale(${sc})`,
                 margin: `0 ${(sc - 1) * 0.5 * size * Math.max(1, w.text.length * 0.5)}px`,
                 opacity: op, color: textColor ?? base, fontWeight: w.emph ? heavy : weight, fontSize: i === bi ? bigSize : undefined,
@@ -195,7 +201,7 @@ export const CaptionPage: React.FC<{ p: Record<string, any>; w: number; h: numbe
   const family = useFamily(style.font_match ?? font, style.weight ?? 800);
   const words: Word[] = p.words ?? [];
   const { pages } = createTikTokStyleCaptions({ combineTokensWithinMilliseconds: Number(p.combine_ms ?? 1200),
-    captions: words.map((x, i) => ({ text: `${i ? " " : ""}${x.text}`, startMs: x.start * 1000, endMs: x.end * 1000, timestampMs: null, confidence: null })) });
+    captions: words.map((x, i) => ({ text: `${i ? glue(words[i - 1].text, x.text) : ""}${x.text}`, startMs: x.start * 1000, endMs: x.end * 1000, timestampMs: null, confidence: null })) });
   const page = [...pages].reverse().find((pg) => t * 1000 >= pg.startMs);
   if (!family || !page) return null;
   let wi = words.findIndex((x) => Math.abs(x.start * 1000 - page.startMs) < 1);

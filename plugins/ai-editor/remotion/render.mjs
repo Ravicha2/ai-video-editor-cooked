@@ -134,7 +134,7 @@ async function many(publicDir, jobsPath) {
 
 async function bench(publicDir, planPath) {
   const { serveUrl, composition, inputProps, bundleS } = await prepare(publicDir, planPath);
-  const n = Math.min(composition.durationInFrames, composition.fps * 2);
+  const n = Math.min(composition.durationInFrames, Math.round(composition.fps * 2));   // fps * 2 is not an integer at 59.94 and Remotion rejects a float frame range
   const from = Math.max(0, Math.floor(composition.durationInFrames / 2 - n / 2));
   const out = path.join(HERE, "out", "bench.mp4");
   // Chrome's start-up, the first page loads and the encode at the end are paid once a render, not per

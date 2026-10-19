@@ -19,7 +19,7 @@ const empty: Plan = {
 };
 
 // Preview: one card over a backdrop, for template stills and clips (test/templates.mjs).
-type PreviewProps = { width: number; height: number; dur: number; card: Card; look?: any; motion?: string; bg?: string; light?: boolean };
+type PreviewProps = { width: number; height: number; dur: number; fps?: number; frames?: number; card: Card; look?: any; motion?: string; bg?: string; light?: boolean };
 const Preview: React.FC<PreviewProps> = ({ card, look: l, motion, bg, light }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -35,8 +35,12 @@ const Preview: React.FC<PreviewProps> = ({ card, look: l, motion, bg, light }) =
     </AbsoluteFill>
   );
 };
+// fps/frames come from the plan for the export's card renders; a bare 30 was wrong at 59.94 (the
+// card was drawn at half speed and the exporter asked for frames past the composition's end).
 const previewMeta: CalculateMetadataFunction<PreviewProps> = ({ props }) => ({
-  width: props.width, height: props.height, fps: 30, durationInFrames: Math.round(props.dur * 30),
+  width: props.width, height: props.height,
+  fps: props.fps ?? 30,
+  durationInFrames: props.frames ?? Math.round(props.dur * (props.fps ?? 30)),
 });
 
 // Proof: one GSAP plugin driving one element, for the determinism test (test/determinism.mjs).

@@ -50,6 +50,29 @@ SIZES = {"9:16": (1080, 1920), "16:9": (1920, 1080)}
 PAUSE_S = 0.3          # a gap this long starts a new caption chunk
 MAX_WORD_S = 0.8       # longest a single spoken word is believed to last
 HOLD_TAIL_S = 0.3      # a caption stays up this long after its last word
+THAI = re.compile("[฀-๿]")
+# Thai vowels and tone marks ride on the letter before them ("นัด" is 4 code points, 3 glyphs), so they are
+# in the alphabet but Python's \w does not count them as word characters: clean() would read "อันดับ" as
+# "อนดบ" and every caption would lose its vowels. Named here, before clean(), because clean() needs them.
+THAI_MARK_CHARS = "".join(chr(c) for c in (0x0e31, *range(0x0e34, 0x0e3b), *range(0x0e47, 0x0e4f)))
+THAI_MARKS = re.compile("[" + THAI_MARK_CHARS + "]")
+# A leading vowel (เ แ โ ใ ไ) belongs to the consonant after it, so a page never breaks on one: it is the
+# one Thai word boundary a page can know without a dictionary.
+LEAD_VOWEL = re.compile("[เแโใไ]")
+# The other half of that boundary, from the next piece instead of this one. Scribe's pieces are
+# sub-syllable (อันดับ is อั น ดั บ), so a width cut lands inside a word as often as not: "สต็|อก",
+# "ได้เล|ยครับ", "หนึ่|งลาย". A piece that is a bare consonant run, or that opens with a vowel sign, can
+# only ever close the piece before it -- hold one more piece rather than break there. Still no dictionary.
+TAIL_PIECE = re.compile("[ก-ฮ]+")
+TAIL_OPEN = re.compile("[" + THAI_MARK_CHARS + "าะ]")
+HOLD_PIECES = 4        # pieces a full page may run on to reach a word boundary. Wider pages buy nothing:
+                       # past this the page only gets longer, and it is already near the line width.
+# What clean() keeps: word characters, the apostrophes, and the Thai marks above.
+KEEP = re.compile("[^\\w'" + THAI_MARK_CHARS + "’-]+")
+# A Thai transcription arrives as sub-word fragments (น, ดั, บ), so counting words gives two syllables
+# a page and the caption flips every 0.2 s. Thai is also written without spaces, so the page is filled
+# by width instead: THAI_PAGE_CHARS is about one line at the default caption size.
+THAI_PAGE_CHARS = 13
 CARD_LEAD_S = 0.1      # a card lands this long before its word
 ENTRANCES = ("pop", "slide", "fade", "scale")
 # Entrance per overlay format, so cards do not all arrive the same way (ai-tells.md "same-entrance"):
@@ -137,7 +160,7 @@ QUIET_HOLD_S = 5.0
 
 
 def clean(text):
-    return re.sub(r"[^\w'’-]+", "", text)
+    return KEEP.sub("", text)
 
 
 def cased(text, mode):
@@ -164,15 +187,47 @@ def join_hyphens(words):
     return out
 
 
+def caption_text(words):
+    """A page's words as they are written. Two Thai fragments are one word: space them apart and a
+    transcript that reads "อันดับ" renders "อั น ดั บ". Glue Thai to Thai; keep the space elsewhere."""
+    out = ""
+    for w in words:
+        t = w["text"]
+        if out and not (THAI.search(out[-1]) and THAI.match(t)):
+            out += " "
+        out += t
+    return out
+
+
+def tail_piece(text):
+    """A Thai piece that cannot open a word: a bare consonant run, or one that starts with a vowel
+    sign. It only closes the piece before it, so a page breaking before one cuts a word in half."""
+    return bool(THAI.match(text)) and bool(TAIL_PIECE.fullmatch(text) or TAIL_OPEN.match(text))
+
+
+def page_full(cur, n):
+    """Is the caption page full? Thai by width (its fragments are syllables, not words), Latin by count."""
+    if any(THAI.search(w["text"]) for w in cur):
+        txt = THAI_MARKS.sub("", caption_text(cur))
+        if len(txt) < 2 or LEAD_VOWEL.fullmatch(txt[-1]):     # never break after a leading vowel
+            return False
+        return len(txt) >= THAI_PAGE_CHARS
+    return len(cur) >= n
+
+
 def chunk_captions(words, n, mode):
-    chunks, cur = [], []
+    chunks, cur, held = [], [], 0
     words = join_hyphens(words)
     for i, w in enumerate(words):
         cur.append(w)
         nxt = words[i + 1] if i + 1 < len(words) else None
-        if nxt is None or len(cur) >= n or ends_clause(w["text"]) or nxt["start"] - w["end"] > PAUSE_S:
+        # A page wide enough to cut, sitting in front of a piece that can only close the piece before it,
+        # holds up to HOLD_PIECES more so the break lands between words, not inside one.
+        if page_full(cur, n) and held < HOLD_PIECES and nxt and tail_piece(nxt["text"]):
+            held += 1
+        elif nxt is None or page_full(cur, n) or ends_clause(w["text"]) or nxt["start"] - w["end"] > PAUSE_S:
             chunks.append(cur)
-            cur = []
+            cur, held = [], 0
     out = []
     for i, c in enumerate(chunks):
         nxt = chunks[i + 1][0]["start"] if i + 1 < len(chunks) else None
@@ -185,7 +240,7 @@ def chunk_captions(words, n, mode):
         ws = [{"text": cased(w["text"], mode), "start": w["start"], "end": w["end"]} for w in c]
         ws = [w for w in ws if w["text"]]
         if ws:
-            out.append({"text": " ".join(w["text"] for w in ws), "start": c[0]["start"],
+            out.append({"text": caption_text(ws), "start": c[0]["start"],
                         "end": round(end, 3), "words": ws})
     return out
 
@@ -2827,7 +2882,13 @@ def treat_captions(plan, edit_dir, meta, floors=None):
     done = {}
     if cs.get("treat") is False:   # the creator's plain captions, as measured: no shadow, glow, stroke or box added
         return []
-    if chunks and not (cs.get("stroke") or cs.get("box")):
+    # The creator's own stroke or box already is a treatment, so nothing is added on top -- and the floors must
+    # not stack a step from another ladder on it: a style with a stroke steps through (shadow, stroke, backing),
+    # so a floor of "band" from the plain ladder is not in that order and fell to its last step, a backing.
+    # Flipping an edit's caption style to a stroke then painted a dark box behind every caption in the video.
+    if cs.get("stroke") or cs.get("box"):
+        return []
+    if chunks:
         for i, px in caption_backdrops(plan, edit_dir, meta).items():
             if not px:
                 continue
@@ -2954,6 +3015,22 @@ def demo():
     hy = [{"text": t, "start": i * 0.3, "end": i * 0.3 + 0.25} for i, t in enumerate(["one", "-for", "-one", "deal"])]
     got = [c["text"] for c in chunk_captions(hy, 3, "sentence")]
     assert got == ["one-for-one deal"], got
+    # Thai: fragments of one word glue without a space, and a page is a line, not two syllables
+    th = [{"text": t, "start": i * 0.2, "end": i * 0.2 + 0.18} for i, t in enumerate(
+        ["อั", "น", "ดั", "บ", "ห้", "า", "ถึ", "ง", "อั", "น", "ดั", "บ", "ห", "นึ่", "ง", "ที่", "สุ", "ด"])]
+    got = [c["text"] for c in chunk_captions(th, 2, "lower")]
+    assert "".join(got) == "อันดับห้าถึงอันดับหนึ่งที่สุด", got
+    assert all(" " not in c and len(c) > 2 for c in got), got
+    assert clean("อันดับ") == "อันดับ" and clean("easy-to-wear") == "easy-to-wear", "clean ate a Thai vowel"
+    # a page full at "ได้เล" holds the "ย" that would have been cut off it ("ได้เลย|ครับ")
+    assert tail_piece("ย") and tail_piece("อก"[:1]) and tail_piece("าะ")
+    assert not tail_piece("ครับ") and not tail_piece("มา") and not tail_piece("Easy")
+    page = [{"text": t, "start": i * 0.2, "end": i * 0.2 + 0.18} for i, t in
+            enumerate(["รุ่", "น", "เ", "นี่", "ย", "ใ", "ช้", "เ", "นื้", "อ", "ผ้", "า", "แ", "บ", "บ", "นุ่", "ม"])]
+    got = [c["text"] for c in chunk_captions(page, 2, "lower")]
+    # a width cut alone breaks at "แ", leaving a page that ends mid-word: the tail rule holds the "บ"
+    assert "".join(got) == "".join(t["text"] for t in page), got
+    assert len(got) == 2 and got[0].endswith("บ") and got[1].startswith("น"), got
     face = {"step_s": 0.5, "heads": [{"t": 0.0, "box": [30, 30, 40, 30]}, {"t": 0.5, "box": [30, 31, 40, 30]}]}
     top = {"start": 0.0, "end": 1.0, "box": [10, 15, 74, 22], "trigger_word": "a"}
     logo = {"start": 0.0, "end": 1.0, "box": [42, 50, 16, 9], "trigger_word": "b", "anim": {"type": "logo"}}
@@ -3434,8 +3511,11 @@ def demo_contrast():
         (d / "check.json").write_text(json.dumps({"render": {"caption_contrast": {"low_at": [1.5]}}}), encoding="utf-8")
         assert contrast_floors(d, d / "plan.json") == {"1.00": "stroke"}
         assert contrast_floors(d, d / "plan.json") == {"1.00": "stroke"}       # the same check is read once
+        # the creator's own stroke or box is already a treatment: a floor from another ladder is not stacked on it
         pl = {"captions": {"style": {"stroke": True}, "chunks": [{"start": 1.0, "end": 2.0, "text": "a"}]}}
-        assert treat_captions(pl, d, None, {"1.00": "stroke"}) == [(0, "stroke", None)]
+        assert treat_captions(pl, d, None, {"1.00": "stroke"}) == []
+        pl["captions"]["style"] = {"box": True}
+        assert treat_captions(pl, d, None, {"1.00": "stroke"}) == []
     # the real-footage test printed 94 lines, one per page; now one line with the count and the worst three
     ch = [{"text": f"w{i}", "start": float(i)} for i in range(10)]
     got = contrast_summary([(i, "backing" if i % 3 else "stroke", 9.0 - i / 2) for i in range(9)] + [(9, "stroke", None)], ch)
@@ -3462,9 +3542,11 @@ def demo_contrast():
             {"start": 5.0, "end": 6.0, "treat": "glow"}]}}), encoding="utf-8")
         (d / "check.json").write_text(json.dumps({"render": {"caption_contrast": {"low_at": [5.5], "fail_at": [5.5]}}}), encoding="utf-8")
         assert contrast_floors(d, d / "plan.json")["5.00"] == "band"
-        # one treatment per video: the strongest any page needed goes on every page
-        tp = {"captions": {"style": {"color": "#FFFFFF", "stroke": True}, "chunks": [
-            {"start": 5.0, "end": 6.0, "treat": "shadow", "treat_color": "#111111"}, {"start": 6.0, "end": 7.0}]}}
+        # one treatment per video: the strongest any page needed goes on every page (no stroke, so a floor applies;
+        # a scene card covers the pages, so the footage behind them is not read)
+        tp = {"width": 1080, "height": 1920, "cards": [{"layout": "scene", "start": 4.0, "end": 8.0}],
+              "captions": {"style": {"color": "#FFFFFF"}, "chunks": [
+                  {"start": 5.0, "end": 6.0, "treat": "shadow", "treat_color": "#111111"}, {"start": 6.0, "end": 7.0}]}}
         treat_captions(tp, d, None, {"5.00": "backing"})
         assert [c["treat"] for c in tp["captions"]["chunks"]] == ["backing", "backing"], tp
     assert pick_treat([(230, 225, 216)] * 9, {**white, "stroke_color": "#1B2A4A"})[1] == "#1B2A4A"   # her palette

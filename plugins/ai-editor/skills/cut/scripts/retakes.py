@@ -472,7 +472,11 @@ def caption_words(heard, cut, names=(), fixes=None):
     """heard: cut.transcript.json words; cut: words.json (the approved cut text, timed on the cut). The heard
     words and times, each word heard differently at the same time spelled as the cut has it, then the fixes
     and the profile's name spellings. Returns (words, [(was, now)])."""
-    strip = lambda t: re.sub(r"^\W+|\W+$", "", t)
+    # Thai combining marks (the vowel signs and tone marks, U+0E31-U+0E4E) are Mn, not \w, so a plain
+    # \W strip eats them off the edge of a word: strip("ท่") is "ท". The core is then wrong and the
+    # re-insert below puts the join AFTER the mark instead of over it ("ท่" -> "ท ส่"). Keep the Thai
+    # block whole and strip only real punctuation.
+    strip = lambda t: re.sub(r"^[^\w฀-๿]+|[^\w฀-๿]+$", "", t)
     hw = [dict(w) for w in heard if w.get("type", "word") == "word" and norm(w["text"])]
     cw = [w for w in cut if w.get("type", "word") == "word" and norm(w["text"])]
     key = lambda ws: [(norm(w["text"]), w["start"], w["end"]) for w in ws]
