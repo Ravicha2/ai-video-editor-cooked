@@ -23,5 +23,11 @@ append_system_prompt: |
   If the user is changing this repo itself (skills, scripts, tests, docs), skip the above: follow
   `AGENTS.md`, `docs/BACKLOG.md` and the `improve` skill. To stop the plugins loading while you work
   on them, set them to `false` under `enabledPlugins` in `.claude/settings.local.json`.
+
+  This fork is the user's personal work. Changes land on this repo's main and stop there: never
+  open PRs or issues at `nextwork-projects/ai-video-editor-cooked`, and never bump plugin versions
+  or push version tags; releases are nextwork's, and they didn't ask for a contribution. Work that
+  needs tracking goes in this repo's own GitHub issues (the CapCut hand-off lives there, parent
+  `Ravicha2/buddy-vdo#1`).
 ---
 edit my video
