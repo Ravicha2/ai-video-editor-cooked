@@ -187,14 +187,15 @@ card frame on a laptop); `--no-render` skips them. If the raw take moved, pass `
 | Final Cut Pro 10.6+ | `<name>.fcpxml` (FCPXML 1.10) | File > Import > XML | cut, cards, titles, sound, markers |
 | DaVinci Resolve 18+ | `<name>.fcpxml`, or `<name>.xml` | File > Import > Timeline; captions: File > Import > Subtitle, the `.srt` | cut, cards, sound, markers; titles may come in plain |
 | Premiere Pro | `<name>.xml` (FCP7 XML, xmeml 4) | File > Import; captions: File > Import, the `.srt` | cut, cards, sound, markers |
-| CapCut | `CAPCUT.md` + `<name>.srt` + `media/` | by hand, about ten minutes; Captions > Add captions takes the `.srt` | everything, placed by hand |
+| CapCut | `capcut/<name>/draft_info.json` (+ `CAPCUT.md`, `<name>.srt`) | CapCut's project list; close CapCut before copying the folder into the store. Captions > Add captions takes the `.srt` | the cut's pieces on the main track; cards and sound by hand |
 | Any | `<name>.edl` (CMX3600) | the editor's EDL import | the cut only |
 
 - Premiere does not read FCPXML (Adobe: it reads FCP7 XML; FCPXML needs a converter such as
   XtoCC), so `premiere` writes xmeml.
-- CapCut has no timeline import. Its desktop project (`draft_info.json`; plain JSON on the Mac
-  in CapCut 9.5, encrypted in some recent versions elsewhere) is undocumented and changes between
-  versions, so the export writes no project file.
+- CapCut's desktop project (`draft_info.json`) is undocumented and changes between versions. The
+  export writes the cut's pieces as one video track, pinned to schema 187; when the user's own
+  drafts are newer it refuses and says to re-check after a CapCut update. `CAPCUT.md` keeps the
+  by-hand path for the cards, captions and sound the draft does not carry yet.
 - Cards: a plain capture is a PNG fitted to its box; anything that moves (an anim, a capture
   with marks or a highlight) is rendered by the Preview composition on a transparent ground,
   frame by frame (`render.mjs stills`), and cropped to its box as ProRes 4444 with alpha. Measured

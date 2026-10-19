@@ -10,7 +10,9 @@
   NAME.fcpxml     FCPXML 1.10: Final Cut Pro 10.6+ and DaVinci Resolve 18+ (File > Import > Timeline)
   NAME.xml        FCP7 XML (xmeml 4): Premiere Pro (File > Import); Resolve reads it too
   NAME.edl        CMX3600, the cut only (one video track, no cards, no captions)
-  CAPCUT.md       CapCut has no timeline import: the steps, every card's time and place
+  CAPCUT.md       the draft folder, then the by-hand steps and every card's time and place
+  capcut/NAME/    a CapCut desktop draft: draft_info.json (the cut's pieces on the main track)
+                  and media/seg-01.mp4... (stable copies; cold cache is filled with render.py)
   media/          card-NN.png (a plain capture fitted to its box), card-NN.mov (a card that moves:
                   rendered by the plugin's Remotion on a transparent ground, cropped to its box,
                   ProRes 4444 with alpha), sfx-NN.wav (sound cues, level baked in)
@@ -32,6 +34,7 @@ Needs ffmpeg/ffprobe (card media and probing). Exit codes: 0 ok, 1 error, 2 usag
 """
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -555,19 +558,27 @@ def edl(ctx):
     return "\n".join(lines)
 
 
-def capcut(ctx, cards, sfx):
+def capcut(ctx, cards, sfx, draft_dir=None):
     W, H = ctx["plan"]["width"], ctx["plan"]["height"]
     secs = lambda f: f"{f / ctx['fps']:.2f}"
     rows = [f"| {c['i']} | {Path(c['path']).name if c.get('path') else '(not rendered)'} | {secs(c['start_f'])} | "
             f"{secs(c['start_f'] + c['len_f'])} | {(c['rect'][0] + c['rect'][2] / 2) / W * 100:.0f}% "
             f"{(c['rect'][1] + c['rect'][3] / 2) / H * 100:.0f}% | {c['rect'][2] / W * 100:.0f}% |" for c in cards]
     srows = [f"| {Path(s['path']).name} | {secs(s['start_f'])} |" for s in sfx]
+    where = (f"A draft is at `{draft_dir.relative_to(ctx['edit']).as_posix()}/draft_info.json`: the cut's "
+             f"{len(ctx['segs'])} pieces on the main track, each a stable copy in its `media/`. Close CapCut "
+             "before copying the folder into its project store: CapCut rewrites the store on quit."
+             if draft_dir else "A draft folder is written beside this file.")
+    first = (f"1. Open the draft in CapCut: close CapCut, copy `{draft_dir.relative_to(ctx['edit']).as_posix()}/` "
+             "into its project store, then start CapCut. The cut is already on the main track."
+             if draft_dir else
+             f"1. New project, {W}x{H}. Import `{ctx['edit'] / 'cut.mp4'}` (the jump cut, already trimmed) and "
+             "the `media/` folder, and drop the cut on the main track.")
     return "\n".join([
         f"# {ctx['name']} in CapCut", "",
-        "CapCut has no timeline import. Its project files are undocumented and change between versions, "
-        "so this export does not write one. Rebuild it by hand in about ten minutes:", "",
-        f"1. New project, {W}x{H}. Import `{ctx['edit'] / 'cut.mp4'}` (the jump cut, already trimmed) and the "
-        "`media/` folder, and drop the cut on the main track.",
+        where, "",
+        "The draft holds the cut only. Add the rest by hand:", "",
+        first,
         f"2. Captions > Add captions > pick `{ctx['name']}.srt`. Style them once; CapCut applies it to all.",
         "3. Each card below on its own overlay track at its start time. Set its position (centre, % of the "
         "frame from the top-left) and width in the Video > Basic panel.",
@@ -578,6 +589,11 @@ def capcut(ctx, cards, sfx):
 
 def export(ctx, out, todo, render):
     out.mkdir(parents=True, exist_ok=True)
+    capcut_version = None
+    if "capcut" in todo:
+        sys.path.insert(0, str(Path(__file__).parent))
+        import capcut_draft   # beside this script; keeps the writer's own demo and docs together
+        capcut_version = capcut_draft.pinned_version()   # refuse before writing anything
     media = out / "media"
     media.mkdir(exist_ok=True)
     caps, marks = captions(ctx), markers(ctx)
@@ -597,8 +613,15 @@ def export(ctx, out, todo, render):
         written.append(out / f"{ctx['name']}.edl")
         written[-1].write_text(edl(ctx), encoding="utf-8")
     if "capcut" in todo:
+        draft_dir = out / "capcut" / ctx["name"]
+        pieces = capcut_draft.ensure_pieces(ctx, draft_dir / "media", probe=probe)
+        draft = capcut_draft.build_draft(ctx, pieces, capcut_version)
+        capcut_draft.check_draft(draft, out)
+        (draft_dir / "draft_info.json").write_text(json.dumps(draft, ensure_ascii=False, indent=1),
+                                                   encoding="utf-8")
+        written.append(draft_dir / "draft_info.json")
         written.append(out / "CAPCUT.md")
-        written[-1].write_text(capcut(ctx, cards, sfx), encoding="utf-8")
+        written[-1].write_text(capcut(ctx, cards, sfx, draft_dir), encoding="utf-8")
     missing = [c for c in cards if c["kind"] == "missing"]
     return written, cards, sfx, missing
 
@@ -670,6 +693,23 @@ def demo():
         assert "001  AX       V     C        01:00:01:00 01:00:03:00 00:00:00:00 00:00:02:00" in e, e
         assert "002  AX       V     C        01:00:05:00 01:00:07:00 00:00:02:00 00:00:04:00" in e, e
         assert "| 1 | card-01.png | 0.33 | 3.00 | 50% 25% | 74% |" in capcut(ctx, cards, sfx)
+        # CapCut: beside the manual steps, a real draft folder holding stable copies of the spans
+        segs = d / ".segments" / "abc"
+        segs.mkdir(parents=True)
+        for n in ("30-90.mp4", "150-210.mp4"):
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i",
+                            "color=c=black:s=108x192:r=30:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                            str(segs / n)], check=True)
+        os.environ["CAPCUT_DRAFT_ROOT"] = str(d / "capcut-drafts")   # a fresh machine: no drafts yet
+        try:
+            export(ctx, d / "export", {"capcut"}, False)
+        finally:
+            os.environ.pop("CAPCUT_DRAFT_ROOT", None)
+        draft_dir = d / "export" / "capcut" / "demo"
+        info = json.loads((draft_dir / "draft_info.json").read_text(encoding="utf-8"))
+        assert info["new_version"] == "187.0.0" and len(info["tracks"][0]["segments"]) == 2
+        assert sorted(p.name for p in (draft_dir / "media").iterdir()) == ["seg-01.mp4", "seg-02.mp4"]
+        assert "draft_info.json" in (d / "export" / "CAPCUT.md").read_text(encoding="utf-8")
     print("demo ok")
 
 
