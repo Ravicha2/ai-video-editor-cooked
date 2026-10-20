@@ -19,13 +19,19 @@ CapCut has no timeline import. Its desktop project is a folder of plain JSON on 
 - A draft folder is discovered at startup and merged into the user's project store. CapCut owns the
   store file and rewrites it on quit.
 - The schema version (`new_version`) moves with the app: 159 to 187 in the samples.
+- Verified by hand in CapCut 9.5 (2026-10-20): the startup scan only discovers a folder with
+  `draft_info.json` **and** a `draft_meta_info.json` beside it — `draft_info.json` alone was skipped.
+  And CapCut cannot read media under `/private/tmp`; draft media must live in the user's home.
+- A caption page's position maps from the plan's `y_pct` to `clip.transform.y = (0.5 - y_pct/100) * 2`
+  (half-canvas units, negative y down: a real auto-caption draft's `y -0.8` is the 90% line).
 
 Full evidence: [`../../capcut_finding.md`](../../capcut_finding.md).
 
 ## Decision
 
 The `capcut` export writes the draft itself, in `edits/<name>/export/capcut/<name>/`:
-`draft_info.json` with the cut's pieces on one video track, and stable copies in `media/`.
+`draft_info.json` with the cut's pieces on one video track, each caption page as a native text
+segment on a text track, and stable copies in `media/`.
 
 - Pin `new_version` to `187.0.0`, the version this writer is built and checked against.
 - Read the user's own drafts before writing. If their newest draft is newer than 187, refuse with
@@ -36,8 +42,13 @@ The `capcut` export writes the draft itself, in `edits/<name>/export/capcut/<nam
   deliberately broken drafts.
 - Copy the kept spans out of `<edit>/.segments` as `seg-01.mp4`..., filling a cold cache with
   `render.py --segments-only`. Never reference the cache: it is pruned when the spans change.
-- Keep `CAPCUT.md` as the by-hand path and the record of the cards, captions and sound the draft
-  does not carry yet.
+- Caption pages become native text segments on their own track (issue #6): the page's text, its µs
+  time and its position (the plan's `y_pct`, in CapCut's half-canvas units with negative y down).
+  No font, size, colour or stroke from the plan: the material carries CapCut's own plain subtitle
+  defaults, as seen in a real auto-caption draft (1017), so the user styles once inside CapCut. The
+  `.srt` stays unchanged for anyone who prefers CapCut's Add-captions import.
+- Keep `CAPCUT.md` as the by-hand path and the record of the cards and sound the draft does not
+  carry yet.
 
 ## Consequences
 
@@ -46,5 +57,5 @@ The `capcut` export writes the draft itself, in `edits/<name>/export/capcut/<nam
   broken project. Re-probe the loader (issue #4's method) before raising `PINNED`.
 - Drafts are installed with CapCut closed: writing into the live project store can be overwritten
   when CapCut quits. Installation is a later issue.
-- The draft holds only the cut until the captions and cards issues land. The schema will grow, so
-  re-run `capcut_draft.py demo` after those changes.
+- The draft holds the cut and the caption pages; the cards and sound issues live on. The schema will
+  grow, so re-run `capcut_draft.py demo` after those changes.

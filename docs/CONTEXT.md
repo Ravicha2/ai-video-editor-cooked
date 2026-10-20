@@ -25,3 +25,4 @@ One kept span of the cut, encoded on its own by `render.py` and cached in
 
 The words shown together at one moment: one chunk in `plan.json` (`captions.chunks`), and one
 caption on screen. A page is filled by width (Thai) or word count (Latin) and never splits a word.
+In a draft, one page is one native text segment on the text track, unstyled.

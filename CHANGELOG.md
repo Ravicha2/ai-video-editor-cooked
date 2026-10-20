@@ -3,10 +3,11 @@
 What changed for every user, newest first.
 
 ## Unreleased
-- Export to CapCut now writes a real desktop draft: the cut's pieces on the main track, with media
-  copied beside it. The schema is pinned to version 187 and checked before writing; if your own
-  CapCut drafts are newer it refuses and says to re-check after an update. `CAPCUT.md` keeps the
-  by-hand path for captions, cards and sound.
+- Export to CapCut now writes a real desktop draft: the cut's pieces on the main track, each caption
+  page as a native text on a text track (timed and placed on the plan's caption line, still unstyled —
+  style one and CapCut applies it to all), with media copied beside it. The schema is pinned to
+  version 187 and checked before writing; if your own CapCut drafts are newer it refuses and says to
+  re-check after an update. `CAPCUT.md` keeps the by-hand path for captions, cards and sound.
 - Thai captions fill a line by width instead of word count, and a page never splits a word. Thai vowel signs
   and tone marks stay attached.
 - A Thai vowel sign now survives the spelling swap in the cut.

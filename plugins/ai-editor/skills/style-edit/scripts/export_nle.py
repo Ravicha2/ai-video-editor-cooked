@@ -558,7 +558,7 @@ def edl(ctx):
     return "\n".join(lines)
 
 
-def capcut(ctx, cards, sfx, draft_dir=None):
+def capcut(ctx, cards, sfx, draft_dir=None, caps=None):
     W, H = ctx["plan"]["width"], ctx["plan"]["height"]
     secs = lambda f: f"{f / ctx['fps']:.2f}"
     rows = [f"| {c['i']} | {Path(c['path']).name if c.get('path') else '(not rendered)'} | {secs(c['start_f'])} | "
@@ -566,8 +566,9 @@ def capcut(ctx, cards, sfx, draft_dir=None):
             f"{(c['rect'][1] + c['rect'][3] / 2) / H * 100:.0f}% | {c['rect'][2] / W * 100:.0f}% |" for c in cards]
     srows = [f"| {Path(s['path']).name} | {secs(s['start_f'])} |" for s in sfx]
     where = (f"A draft is at `{draft_dir.relative_to(ctx['edit']).as_posix()}/draft_info.json`: the cut's "
-             f"{len(ctx['segs'])} pieces on the main track, each a stable copy in its `media/`. Close CapCut "
-             "before copying the folder into its project store: CapCut rewrites the store on quit."
+             f"{len(ctx['segs'])} pieces on the main track and the {len(caps or [])} caption pages on a text track, "
+             "each piece a stable copy in `media/`. Close CapCut before copying the folder into its project "
+             "store: CapCut rewrites the store on quit."
              if draft_dir else "A draft folder is written beside this file.")
     first = (f"1. Open the draft in CapCut: close CapCut, copy `{draft_dir.relative_to(ctx['edit']).as_posix()}/` "
              "into its project store, then start CapCut. The cut is already on the main track."
@@ -579,7 +580,9 @@ def capcut(ctx, cards, sfx, draft_dir=None):
         where, "",
         "The draft holds the cut only. Add the rest by hand:", "",
         first,
-        f"2. Captions > Add captions > pick `{ctx['name']}.srt`. Style them once; CapCut applies it to all.",
+        f"2. The captions are already on the draft's text track. Style one page (font, size, colour); "
+        "CapCut applies it to all. Prefer importing by hand instead? Captions > Add captions > "
+        f"pick `{ctx['name']}.srt`.",
         "3. Each card below on its own overlay track at its start time. Set its position (centre, % of the "
         "frame from the top-left) and width in the Video > Basic panel.",
         "4. Each sound cue on an audio track at its time. Their level is already set.", "",
@@ -615,13 +618,13 @@ def export(ctx, out, todo, render):
     if "capcut" in todo:
         draft_dir = out / "capcut" / ctx["name"]
         pieces = capcut_draft.ensure_pieces(ctx, draft_dir / "media", probe=probe)
-        draft = capcut_draft.build_draft(ctx, pieces, capcut_version)
+        draft = capcut_draft.build_draft(ctx, pieces, capcut_version, caps=caps)
         capcut_draft.check_draft(draft, out)
         (draft_dir / "draft_info.json").write_text(json.dumps(draft, ensure_ascii=False, indent=1),
                                                    encoding="utf-8")
         written.append(draft_dir / "draft_info.json")
         written.append(out / "CAPCUT.md")
-        written[-1].write_text(capcut(ctx, cards, sfx, draft_dir), encoding="utf-8")
+        written[-1].write_text(capcut(ctx, cards, sfx, draft_dir, caps), encoding="utf-8")
     missing = [c for c in cards if c["kind"] == "missing"]
     return written, cards, sfx, missing
 
@@ -706,10 +709,23 @@ def demo():
         finally:
             os.environ.pop("CAPCUT_DRAFT_ROOT", None)
         draft_dir = d / "export" / "capcut" / "demo"
+        import capcut_draft
         info = json.loads((draft_dir / "draft_info.json").read_text(encoding="utf-8"))
         assert info["new_version"] == "187.0.0" and len(info["tracks"][0]["segments"]) == 2
+        # and the captions as native texts: one segment per srt cue at the plan's 70%-line
+        tt = info["tracks"][-1]
+        assert tt["type"] == "text" and [json.loads(m["content"])["text"]
+                                         for m in info["materials"]["texts"]] == \
+            ["hello there", "after the cut"]
+        assert [s["target_timerange"]["duration"] for s in tt["segments"]] == [1_000_000, 800_000]
+        assert tt["segments"][0]["clip"]["transform"]["y"] == (0.5 - 70 / 100) * 2
+        capcut_draft.check_draft(info, d / "export")
+        # the srt is untouched: CapCut's own import stays the fallback path
+        srt_out = (d / "export" / "demo.srt").read_text(encoding="utf-8")
+        assert "hello there" in srt_out and "after the cut" in srt_out
         assert sorted(p.name for p in (draft_dir / "media").iterdir()) == ["seg-01.mp4", "seg-02.mp4"]
-        assert "draft_info.json" in (d / "export" / "CAPCUT.md").read_text(encoding="utf-8")
+        capcut_md = (d / "export" / "CAPCUT.md").read_text(encoding="utf-8")
+        assert "draft_info.json" in capcut_md and "text track" in capcut_md  # captions no longer a hand step
     print("demo ok")
 
 

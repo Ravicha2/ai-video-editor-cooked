@@ -147,13 +147,128 @@ def _video_material(uid, path, width, height, duration):
     }
 
 
-def build_draft(ctx, pieces, version=PINNED):
-    """The draft_info.json object: one video track, one segment per piece. `pieces` are dicts with
-    path, width and height (from ensure_pieces); ctx["segs"] gives each span's timeline start and length."""
+def _text_material(uid, text):
+    """A subtitle material with CapCut's own plain defaults (draft 1017, issue #6): the reader
+    was only proven on shapes real drafts carry, and no field here reproduces the plan's styling —
+    the user restyles once inside CapCut. content is the JSON string the app parses itself."""
+    content = json.dumps({
+        "styles": [{"fill": {"alpha": 1.0, "content": {"render_type": "solid",
+                                                       "solid": {"alpha": 1.0, "color": [1.0, 1.0, 1.0]}}},
+                    "font": {"id": "",
+                             "path": "/Applications/CapCut.app/Contents/Resources/Font/SystemFont/en.ttf"},
+                    "range": [0, len(text)], "size": 11.0}],
+        "text": text,
+    }, ensure_ascii=False)
+    return {
+        "recognize_task_id": "", "id": uid, "name": "", "recognize_text": "", "recognize_model": "",
+        "punc_model": "", "type": "subtitle", "base_content": "",
+        "words": {"start_time": [], "end_time": [], "text": []},
+        "current_words": {"start_time": [], "end_time": [], "text": []},
+        "global_alpha": 1.0, "combo_info": {"text_templates": []},
+        "caption_template_info": {"resource_id": "", "third_resource_id": "", "resource_name": "",
+                                  "category_id": "", "category_name": "", "effect_id": "",
+                                  "request_id": "", "path": "", "is_new": False, "source_platform": 0},
+        "layer_weight": 1, "letter_spacing": 0.0, "text_curve": None, "text_loop_on_path": False,
+        "offset_on_path": 0.0, "enable_path_typesetting": False, "text_exceeds_path_process_type": 0,
+        "text_typesetting_paths": None, "text_typesetting_paths_file": "", "text_typesetting_path_index": 0,
+        "line_spacing": 0.02, "has_shadow": False, "shadow_color": "", "shadow_alpha": 0.9,
+        "shadow_smoothing": 0.45, "shadow_distance": 5.0, "shadow_point": {"x": 0.6363961030678928,
+                                                                          "y": -0.6363961030678927},
+        "shadow_angle": -45.0, "shadow_thickness_projection_enable": False,
+        "shadow_thickness_projection_angle": 0.0, "shadow_thickness_projection_distance": 0.0,
+        "border_alpha": 1.0, "border_color": "", "border_width": 0.08, "border_mode": 0, "style_name": "",
+        "text_color": "#FFFFFF", "text_alpha": 1.0, "font_name": "", "font_title": "none",
+        "font_size": 11.0, "font_path": "", "font_id": "", "font_resource_id": "", "initial_scale": 1.0,
+        "font_url": "", "typesetting": 0, "alignment": 1, "line_feed": 1,
+        "use_effect_default_color": True, "is_rich_text": False, "shape_clip_x": False,
+        "shape_clip_y": False, "ktv_color": "", "text_to_audio_ids": [], "bold_width": 0.0,
+        "italic_degree": 0, "underline": False, "underline_width": 0.05, "underline_offset": 0.22,
+        "sub_type": 0, "check_flag": 7, "text_size": 30, "font_category_name": "",
+        "font_source_platform": 0, "font_third_resource_id": "", "font_category_id": "", "add_type": 2,
+        "operation_type": 0, "recognize_type": 0, "fonts": [], "background_color": "",
+        "background_alpha": 1.0, "background_style": 0, "background_round_radius": 0.0,
+        "background_width": 0.14, "background_height": 0.14, "background_vertical_offset": 0.0,
+        "background_horizontal_offset": 0.0, "background_fill": "", "single_char_bg_enable": False,
+        "single_char_bg_color": "", "single_char_bg_alpha": 1.0, "single_char_bg_round_radius": 0.3,
+        "single_char_bg_width": 0.0, "single_char_bg_height": 0.0, "single_char_bg_vertical_offset": 0.0,
+        "single_char_bg_horizontal_offset": 0.0, "font_team_id": "", "tts_auto_update": False,
+        "text_preset_resource_id": "", "group_id": "", "preset_id": "", "preset_name": "",
+        "preset_category": "", "preset_category_id": "", "preset_index": 0,
+        "preset_has_set_alignment": False, "force_apply_line_max_width": False, "language": "",
+        "relevance_segment": [], "original_size": [], "fixed_width": -1.0, "fixed_height": -1.0,
+        "line_max_width": 0.82, "oneline_cutoff": False, "cutoff_postfix": "",
+        "subtitle_template_original_fontsize": 0.0, "subtitle_keywords": None, "inner_padding": -1.0,
+        "multi_language_current": "none", "source_from": "", "is_lyric_effect": False,
+        "lyric_group_id": "", "lyrics_template": {"resource_id": "", "resource_name": "", "panel": "",
+                                                  "effect_id": "", "path": "", "category_id": "",
+                                                  "category_name": "", "request_id": ""},
+        "is_batch_replace": False, "is_words_linear": False, "ssml_content": "",
+        "subtitle_keywords_config": None, "sub_template_id": -1, "translate_original_text": "",
+        "content": content,
+    }
+
+
+def _text_segment(seg_uid, mid, anim_ref, start_us, end_us, y):
+    """One caption page as a text segment (draft 1017): no source times, one animations ref, and a
+    position in half-canvas units where negative y is down — the plan's `y_pct` from the top maps to
+    `(0.5 - y_pct/100) * 2`, so CapCut's own bottom captions (y -0.8) sit at 90% of the frame."""
+    return {
+        "id": seg_uid, "source_timerange": None,
+        "target_timerange": {"start": start_us, "duration": end_us - start_us},
+        "render_timerange": {"start": 0, "duration": 0}, "desc": "", "state": 0, "speed": 1.0,
+        "is_loop": False, "is_tone_modify": False, "reverse": False, "intensifies_audio": False,
+        "cartoon": False, "volume": 1.0, "last_nonzero_volume": 1.0,
+        "clip": {"scale": {"x": 1.0, "y": 1.0}, "rotation": 0.0, "transform": {"x": 0.0, "y": y},
+                 "flip": {"vertical": False, "horizontal": False}, "alpha": 1.0},
+        "uniform_scale": {"on": True, "value": 1.0}, "material_id": mid,
+        "extra_material_refs": [anim_ref], "render_index": 14000, "keyframe_refs": [],
+        "enable_lut": False, "enable_adjust": False, "enable_hsl": False, "visible": True,
+        "group_id": "", "enable_color_curves": True, "enable_hsl_curves": True, "track_render_index": 1,
+        "hdr_settings": None, "enable_color_wheels": True, "track_attribute": 0,
+        "is_placeholder": False, "template_id": "", "enable_smart_color_adjust": False,
+        "template_scene": "default", "common_keyframes": [], "caption_info": None,
+        "responsive_layout": {"enable": False, "target_follow": "", "size_layout": 0,
+                              "horizontal_pos_layout": 0, "vertical_pos_layout": 0},
+        "enable_color_match_adjust": False, "enable_color_correct_adjust": False,
+        "enable_adjust_mask": False, "raw_segment_id": "", "lyric_keyframes": None,
+        "enable_video_mask": True, "digital_human_template_group_id": "", "color_correct_alg_result": "",
+        "source": "segmentsourcenormal", "enable_mask_stroke": False, "enable_mask_shadow": False,
+        "enable_color_adjust_pro": False,
+    }
+
+
+def _caption_y(ctx):
+    """Vertical centre of the captions, in CapCut's half-canvas units, from the plan's `y_pct`
+    (percent of the frame from the top). CapCut maps x, y in half-width/height units with y
+    positive up: CapCut's own bottom captions sit at y -0.8 = the 90%-line in draft 1017."""
+    style = ctx["plan"].get("captions", {}).get("style") or {}
+    return (0.5 - style.get("y_pct", 90) / 100) * 2
+
+
+def _text_track(caps, rate, y):
+    """The caption pages as one text track; the segment times are the pages' own frames, quantised
+    the same way the video track quantises spans (boundaries, not durations)."""
+    anim = {"id": _uid(), "type": "sticker_animation", "animations": [], "multi_language_current": "none"}
+    materials, segments = [], []
+    for c in caps:
+        mid = _uid()
+        materials.append(_text_material(mid, c["text"]))
+        segments.append(_text_segment(_uid(), mid, anim["id"],
+                                      _us(c["start_f"], rate), _us(c["start_f"] + c["len_f"], rate), y))
+    track = {"id": _uid(), "type": "text", "segments": segments, "flag": 1, "attribute": 0,
+             "name": "", "is_default_name": True}
+    return track, {"texts": materials, "material_animations": [anim]}
+
+
+def build_draft(ctx, pieces, version=PINNED, caps=None):
+    """The draft_info.json object: one video track, one segment per piece, and when `caps` is given
+    one text track of caption pages. `pieces` are dicts with path, width and height (from
+    ensure_pieces); ctx["segs"] gives each span's timeline start and length."""
     rate = ctx["rate"]
     assert len(pieces) == len(ctx["segs"]), f"{len(pieces)} pieces for {len(ctx['segs'])} kept spans"
     materials = {bucket: [] for bucket in AUX}
     materials["videos"] = []
+    text_track, text_materials = _text_track(caps, rate, _caption_y(ctx)) if caps else (None, {})
     segments, frame = [], 0
     for (_, _, length), piece in zip(ctx["segs"], pieces):
         # Quantise the two frame boundaries, not each duration: rounding every span on its own drifts
@@ -196,7 +311,8 @@ def build_draft(ctx, pieces, version=PINNED):
                    "multi_language_mode": "none", "use_float_render": False, "hdr_vivid": False},
         "canvas_config": {"ratio": "original", "width": ctx["plan"]["width"],
                           "height": ctx["plan"]["height"], "background": None},
-        "tracks": [track], "materials": materials, "relationships": [], "platform": platform,
+        "tracks": [track] + ([text_track] if text_track else []),
+        "materials": {**materials, **text_materials}, "relationships": [], "platform": platform,
         "last_modified_platform": platform, "mixed_track_mode_on": False,
         "render_index_track_mode_on": True, "free_render_index_mode_on": False,
         "source": "default", "path": "", "draft_type": "video",
@@ -216,12 +332,24 @@ def check_draft(draft, root):
             assert seg["material_id"] in ids, f"dangling material_id {seg['material_id']}"
             for ref in seg["extra_material_refs"]:
                 assert ref in ids, f"dangling extra_material_ref {ref}"
-            source, target = seg["source_timerange"], seg["target_timerange"]
+            target = seg["target_timerange"]
+            if seg.get("source_timerange") is None:   # a text segment: no source, may gap but not overlap
+                assert target["duration"] > 0, f"bad target duration {target}"
+                assert target["start"] >= t, f"text times are not monotone: {target['start']} < {t}"
+                t = target["start"] + target["duration"]
+                continue
+            source = seg["source_timerange"]
             assert source["start"] >= 0 and source["duration"] > 0, f"bad source times {source}"
             assert target["start"] == t, f"target times are not monotone: {target['start']} != {t}"
             assert target["duration"] > 0, f"bad target duration {target}"
             t = target["start"] + target["duration"]
         total = max(total, t)
+    for m in draft["materials"].get("texts", []):
+        try:
+            content = json.loads(m["content"])
+        except (json.JSONDecodeError, TypeError) as e:
+            raise AssertionError(f"unreadable text material content: {e}") from e
+        assert content.get("text"), "a text material without text"
     assert total == draft["duration"], f"segments add to {total} µs, draft says {draft['duration']}"
     for bucket in buckets.values():
         for m in bucket:
@@ -271,6 +399,45 @@ def demo():
             [(0, 1_001_000), (0, 500_500)]
         assert all(len(s["extra_material_refs"]) == 6 for s in segs)
         check_draft(d, export)
+
+        # --- captions: one native text segment per caption page, times from the same frame maths ---
+        caps = [{"start_f": 0, "len_f": 60, "text": "หนึ่ง สอง"},
+                {"start_f": 60, "len_f": 30, "text": "สาม"}]
+        d = build_draft(ctx, pieces, caps=caps)
+        tt = d["tracks"][-1]
+        assert tt["type"] == "text"
+        ts = tt["segments"]
+        assert [s["target_timerange"] for s in ts] == \
+            [{"start": 0, "duration": 1_001_000}, {"start": 1_001_000, "duration": 500_500}]
+        assert len(ts) == len(caps) == len(d["materials"]["texts"])
+        # the shape is draft 1017's: an animations ref, no source times, the page's own text
+        assert all(len(s["extra_material_refs"]) == 1 for s in ts)
+        assert all(s["source_timerange"] is None and s["render_index"] == 14000 for s in ts)
+        assert all(json.loads(m["content"])["text"] == c["text"]
+                   for m, c in zip(d["materials"]["texts"], caps))
+        assert json.loads(d["materials"]["texts"][0]["content"])["styles"][0]["range"] == [0, len(caps[0]["text"])]
+        # the plan's caption line, on the plan-drawn 70%-line: half-canvas, negative y down
+        assert ts[0]["clip"]["transform"]["y"] == (0.5 - 90 / 100) * 2
+        d70 = build_draft({**ctx, "plan": {"width": 1080, "height": 1920,
+                                           "captions": {"style": {"y_pct": 70}}}}, pieces, caps=caps)
+        assert d70["tracks"][-1]["segments"][0]["clip"]["transform"]["y"] == (0.5 - 70 / 100) * 2
+        check_draft(d, export)
+        # a broken text draft has to be rejected too
+        broken = copy.deepcopy(d)
+        broken["tracks"][-1]["segments"][0]["extra_material_refs"] = ["not-a-material"]
+        assert breaks(check_draft, broken, export)
+        broken = copy.deepcopy(d)
+        broken["tracks"][-1]["segments"][1]["target_timerange"]["start"] = 0   # inside the previous page
+        assert breaks(check_draft, broken, export)
+        broken = copy.deepcopy(d)
+        broken["tracks"][-1]["segments"][-1]["target_timerange"]["duration"] = d["duration"] * 2
+        assert breaks(check_draft, broken, export)
+        broken = copy.deepcopy(d)
+        broken["materials"]["texts"][0]["content"] = "{not json"
+        assert breaks(check_draft, broken, export)
+        broken = copy.deepcopy(d)
+        broken["materials"]["texts"][0]["content"] = json.dumps({"text": ""}, ensure_ascii=False)
+        assert breaks(check_draft, broken, export)
         # one-frame spans: quantise the boundary, not each duration, or joins drift by 1 µs
         tiny = {**ctx, "segs": [(0, 0, 1), (1, 1, 1), (2, 2, 1)], "total_f": 3}
         one = [{"path": media / f"seg-{i:02d}.mp4", "width": 832, "height": 1040} for i in (1, 2, 3)]
