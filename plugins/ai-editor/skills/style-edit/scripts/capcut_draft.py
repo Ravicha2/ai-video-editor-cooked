@@ -136,9 +136,9 @@ AUX = {
 }
 
 
-def _video_material(uid, path, width, height, duration):
+def _video_material(uid, path, width, height, duration, kind="video"):
     return {
-        "id": uid, "unique_id": uuid.uuid4().hex, "type": "video", "duration": duration,
+        "id": uid, "unique_id": uuid.uuid4().hex, "type": kind, "duration": duration,
         "path": str(Path(path).resolve()), "width": width, "height": height, "has_audio": False,
         "material_name": Path(path).name, "category_name": "local", "crop_ratio": "free", "crop_scale": 1.0,
         "crop": {"upper_left_x": 0.0, "upper_left_y": 0.0, "upper_right_x": 1.0, "upper_right_y": 0.0,
@@ -149,7 +149,7 @@ def _video_material(uid, path, width, height, duration):
 
 def _text_material(uid, text):
     """A subtitle material with CapCut's own plain defaults (draft 1017, issue #6): the reader
-    was only proven on shapes real drafts carry, and no field here reproduces the plan's styling —
+    was only proven on shapes real drafts carry, and no field here reproduces the plan's styling -
     the user restyles once inside CapCut. content is the JSON string the app parses itself."""
     content = json.dumps({
         "styles": [{"fill": {"alpha": 1.0, "content": {"render_type": "solid",
@@ -210,7 +210,7 @@ def _text_material(uid, text):
 
 def _text_segment(seg_uid, mid, anim_ref, start_us, end_us, y):
     """One caption page as a text segment (draft 1017): no source times, one animations ref, and a
-    position in half-canvas units where negative y is down — the plan's `y_pct` from the top maps to
+    position in half-canvas units where negative y is down: the plan's `y_pct` from the top maps to
     `(0.5 - y_pct/100) * 2`, so CapCut's own bottom captions (y -0.8) sit at 90% of the frame."""
     return {
         "id": seg_uid, "source_timerange": None,
@@ -245,6 +245,122 @@ def _caption_y(ctx):
     return (0.5 - style.get("y_pct", 90) / 100) * 2
 
 
+def _card_tracks(cards, rate, canvas, materials):
+    """Cards as overlay video tracks, one per lane (a card per track position, so overlaps stay
+    legal), above the main track: flag 1, render_index 14000. An animated card is its ProRes .mov
+    with a grayscale matte beside it named <file>.mov.alpha.mp4: CapCut reads alpha only through
+    that sidecar (issue #4's decompile); a still card is its .png as an image material. A card that
+    renders nothing stays a hand step and is not in the draft. The media lives in the draft folder;
+    the copies are made by the export."""
+    W, H = canvas
+    tracks = []
+    kept = [c for c in (cards or []) if c.get("path") and c.get("kind") in ("video", "image")]
+    kept.sort(key=lambda c: (c["lane"], c["start_f"]))
+    for lane in sorted({c["lane"] for c in kept}):
+        segments = []
+        for c in kept:
+            if c["lane"] != lane:
+                continue
+            start_us, end_us = _us(c["start_f"], rate), _us(c["start_f"] + c["len_f"], rate)
+            mid = _uid()
+            bucket = "videos" if c["kind"] == "video" else "images"
+            materials[bucket].append(_video_material(mid, c["path"], c["rect"][2], c["rect"][3],
+                                                     end_us - start_us, kind=c["kind"]))
+            refs = []
+            for b, make in AUX.items():
+                ref = _uid()
+                materials[b].append(make(ref))
+                refs.append(ref)
+            segments.append({
+                "id": _uid(), "source_timerange": {"start": 0, "duration": end_us - start_us},
+                "target_timerange": {"start": start_us, "duration": end_us - start_us},
+                "render_timerange": {"start": 0, "duration": 0}, "speed": 1.0, "volume": 1.0,
+                "material_id": mid, "extra_material_refs": refs,
+                # 14000: above the main track (0), where every track's own render sits
+                "render_index": 14000, "visible": True,
+                "clip": {**REST_CLIP, "scale": _card_scale(c["rect"], W, H),
+                         "transform": _card_transform(c["rect"], W, H)},
+                "uniform_scale": {"on": True, "value": 1.0}, "keyframe_refs": [], "enable_lut": False,
+                "enable_adjust": False, "group_id": "", "track_render_index": 1,
+                "is_placeholder": False, "template_id": "", "source": "segmentsourcenormal",
+            })
+        tracks.append({"id": _uid(), "type": "video", "segments": segments, "flag": 1,
+                       "attribute": 0, "name": "", "is_default_name": True})
+    return tracks
+
+
+def _card_transform(rect, W, H):
+    """The card's centre in half-canvas units: x right, y up: the caption sign convention, so
+    the plan's top-left-percent rect maps like `y_pct` does."""
+    x, y, w, h = rect
+    return {"x": ((x + w / 2) / W - 0.5) * 2, "y": (0.5 - (y + h / 2) / H) * 2}
+
+
+def _card_scale(rect, W, H):
+    """The scale that shows a box-sized material at its box size. CapCut's 1.0 inserts a clip
+    fitted inside the canvas (contain): displayed = box * min(W/w, H/h), so s = 1 / that. A
+    full-frame card lands on scale 1.0. Unproven against a real overlay draft; the CapCut smoke
+    test decides, and the fallback is the .png still (CAPCUT.md keeps the hand tables)."""
+    w, h = rect[2], rect[3]
+    s = max(w / W, h / H)
+    return {"x": s, "y": s}
+
+
+REST_CLIP = {"rotation": 0.0, "flip": {"vertical": False, "horizontal": False}, "alpha": 1.0}
+
+
+def _audio_material(uid, path, duration):
+    """A local audio material, in the shape real drafts carry for one (draft 0315 (2)): local
+    music lands as type extract_music, whatever the file."""
+    return {
+        "id": uid, "duration": duration, "path": str(Path(path).resolve()),
+        "name": Path(path).name, "type": "extract_music", "category_name": "local",
+        "check_flag": 1, "music_id": uuid.uuid4().hex, "source_platform": 0,
+        "local_material_id": uuid.uuid4().hex, "wave_points": [], "is_ugc": False,
+        "copyright_limit_type": "none",
+    }
+
+
+def _cues_track(cues, rate, materials):
+    """Sound cues as one audio track (draft 0315 (2)'s shape): a segment per cue with six refs -
+    speed, placeholder, fade, beats, channel mapping, vocal separation: gaps allowed between
+    them, volume 1.0 because the level is already set in the rendered media (sfx.py). The media
+    lives in the draft folder; the copies are made by the export."""
+    segments = []
+    for i, s in enumerate(cues or [], 1):
+        start_us, end_us = _us(s["start_f"], rate), _us(s["start_f"] + s["len_f"], rate)
+        mid = _uid()
+        materials["audios"].append(_audio_material(mid, s["path"], end_us - start_us))
+        fade, beat = _uid(), _uid()
+        materials["audio_fades"].append({"id": fade, "type": "audio_fade", "fade_type": 0,
+                                         "fade_in_duration": 0, "fade_out_duration": 0})
+        materials["beats"].append({"id": beat, "type": "beats", "mode": 404, "gear": 404,
+                                   "gear_count": 0, "enable_ai_beats": False, "user_beats": [],
+                                   "user_delete_ai_beats": None,
+                                   "ai_beats": {"beat_speed_infos": [], "beats_path": "",
+                                                "beats_url": "", "melody_path": "",
+                                                "melody_percents": [0.0], "melody_url": ""}})
+        refs = [fade, beat]
+        for b in ("speeds", "placeholder_infos", "sound_channel_mappings", "vocal_separations"):
+            ref = _uid()
+            materials[b].append(AUX[b](ref))
+            refs.append(ref)
+        segments.append({
+            "id": _uid(), "source_timerange": {"start": 0, "duration": end_us - start_us},
+            "target_timerange": {"start": start_us, "duration": end_us - start_us},
+            "render_timerange": {"start": 0, "duration": 0}, "speed": 1.0, "volume": 1.0,
+            "last_nonzero_volume": 1.0, "material_id": mid, "extra_material_refs": refs,
+            "render_index": 0, "keyframe_refs": [], "visible": True, "clip": None,
+            "uniform_scale": None, "group_id": "", "track_render_index": 1,
+            "is_placeholder": False, "template_id": "", "source": "segmentsourcenormal",
+            "state": 0, "desc": "", "is_loop": False, "is_tone_modify": False, "reverse": False,
+            "intensifies_audio": False, "cartoon": False, "caption_info": None,
+            "enable_lut": False, "enable_adjust": False,
+        })
+    return [{"id": _uid(), "type": "audio", "segments": segments, "flag": 0, "attribute": 0,
+             "name": "", "is_default_name": True}]
+
+
 def _text_track(caps, rate, y):
     """The caption pages as one text track; the segment times are the pages' own frames, quantised
     the same way the video track quantises spans (boundaries, not durations)."""
@@ -260,15 +376,22 @@ def _text_track(caps, rate, y):
     return track, {"texts": materials, "material_animations": [anim]}
 
 
-def build_draft(ctx, pieces, version=PINNED, caps=None):
+def build_draft(ctx, pieces, version=PINNED, caps=None, cards=None, cues=None):
     """The draft_info.json object: one video track, one segment per piece, and when `caps` is given
-    one text track of caption pages. `pieces` are dicts with path, width and height (from
-    ensure_pieces); ctx["segs"] gives each span's timeline start and length."""
+    one text track of caption pages; when `cards` is given, one overlay video track per used lane
+    and when `cues` is given one audio track (issue #7). `pieces` are dicts with path, width and
+    height (from ensure_pieces); ctx["segs"] gives each span's timeline start and length."""
     rate = ctx["rate"]
     assert len(pieces) == len(ctx["segs"]), f"{len(pieces)} pieces for {len(ctx['segs'])} kept spans"
     materials = {bucket: [] for bucket in AUX}
     materials["videos"] = []
+    materials["images"] = []
+    materials["audios"] = []
+    materials["audio_fades"] = []
+    materials["beats"] = []
     text_track, text_materials = _text_track(caps, rate, _caption_y(ctx)) if caps else (None, {})
+    card_tracks = _card_tracks(cards, rate, (ctx["plan"]["width"], ctx["plan"]["height"]), materials)
+    cue_tracks = _cues_track(cues, rate, materials) if cues else []
     segments, frame = [], 0
     for (_, _, length), piece in zip(ctx["segs"], pieces):
         # Quantise the two frame boundaries, not each duration: rounding every span on its own drifts
@@ -297,6 +420,9 @@ def build_draft(ctx, pieces, version=PINNED, caps=None):
     timeline = _us(frame, rate)
     track = {"id": _uid(), "type": "video", "segments": segments, "flag": 0, "attribute": 0,
              "name": "", "is_default_name": True}
+    # a card whose tail (or a cue) runs past the cut's last frame stretches the timeline
+    timeline = max([timeline] + [s["target_timerange"]["start"] + s["target_timerange"]["duration"]
+                                 for tr in card_tracks + cue_tracks for s in tr["segments"]])
     now = int(time.time())
     platform = {"os": "mac" if sys.platform == "darwin" else
                 ("windows" if sys.platform.startswith("win") else sys.platform),
@@ -311,7 +437,7 @@ def build_draft(ctx, pieces, version=PINNED, caps=None):
                    "multi_language_mode": "none", "use_float_render": False, "hdr_vivid": False},
         "canvas_config": {"ratio": "original", "width": ctx["plan"]["width"],
                           "height": ctx["plan"]["height"], "background": None},
-        "tracks": [track] + ([text_track] if text_track else []),
+        "tracks": [track] + card_tracks + cue_tracks + ([text_track] if text_track else []),
         "materials": {**materials, **text_materials}, "relationships": [], "platform": platform,
         "last_modified_platform": platform, "mixed_track_mode_on": False,
         "render_index_track_mode_on": True, "free_render_index_mode_on": False,
@@ -326,8 +452,14 @@ def check_draft(draft, root):
     buckets = draft["materials"]
     ids = {m["id"] for bucket in buckets.values() for m in bucket}
     total = 0
+    main_seen = False
     for track in draft["tracks"]:
         t = 0
+        # the first video track is the main one: contiguous, anchored at 0. Overlay tracks and the
+        # audio track may gap (cards and cues sit at their own times) but may not overlap.
+        gappy = (track["type"] == "video" and main_seen) or track["type"] == "audio"
+        if track["type"] == "video" and not main_seen:
+            main_seen = True
         for seg in track["segments"]:
             assert seg["material_id"] in ids, f"dangling material_id {seg['material_id']}"
             for ref in seg["extra_material_refs"]:
@@ -340,8 +472,18 @@ def check_draft(draft, root):
                 continue
             source = seg["source_timerange"]
             assert source["start"] >= 0 and source["duration"] > 0, f"bad source times {source}"
-            assert target["start"] == t, f"target times are not monotone: {target['start']} != {t}"
             assert target["duration"] > 0, f"bad target duration {target}"
+            if gappy:
+                assert target["start"] >= t, f"track times overlap: {target['start']} < {t}"
+                m = next(mm for bucket in buckets.values() for mm in bucket
+                         if mm["id"] == seg["material_id"])
+                # an animated card is a .mov with its grayscale matte beside it (issue #4); a still
+                # card is a .png, which needs no matte
+                if m["type"] == "video":
+                    matte = Path(str(m["path"]) + ".alpha.mp4")
+                    assert matte.is_file(), f"no alpha matte beside the card: {matte}"
+            else:
+                assert target["start"] == t, f"target times are not monotone: {target['start']} != {t}"
             t = target["start"] + target["duration"]
         total = max(total, t)
     for m in draft["materials"].get("texts", []):
@@ -422,6 +564,67 @@ def demo():
                                            "captions": {"style": {"y_pct": 70}}}}, pieces, caps=caps)
         assert d70["tracks"][-1]["segments"][0]["clip"]["transform"]["y"] == (0.5 - 70 / 100) * 2
         check_draft(d, export)
+
+        # --- cards: one overlay track per lane above the main one, each card at its rect ---
+        # A card that did not render (kind missing) stays a hand step and is not in the draft.
+        cards = [{"i": 1, "kind": "video", "path": media / "card-01.mov", "start_f": 0, "len_f": 60,
+                  "rect": [100, 200, 800, 400], "lane": 1, "name": "hook"},
+                 {"i": 2, "kind": "image", "path": media / "card-02.png", "start_f": 30, "len_f": 30,
+                  "rect": [140, 760, 800, 400], "lane": 2, "name": "race"},
+                 {"i": 3, "kind": "missing", "start_f": 0, "len_f": 10,
+                  "rect": [0, 0, 100, 100], "lane": 1, "name": "ghost"}]
+        (media / "card-01.mov").write_bytes(b"mov")
+        (media / "card-01.mov.alpha.mp4").write_bytes(b"matte")
+        (media / "card-02.png").write_bytes(b"png")
+        d = build_draft(ctx, pieces, caps=caps, cards=cards)
+        vids = [t for t in d["tracks"] if t["type"] == "video"]
+        assert len(vids) == 3   # the main track + one overlay track per used lane
+        ov, segs1, segs2 = vids[1:], vids[1]["segments"], vids[2]["segments"]
+        assert len(segs1) == 1 and len(segs2) == 1   # ghost stayed a hand step
+        assert ov[0]["flag"] == 1   # overlay above the main track (flag 0)
+        hook = segs1[0]
+        assert hook["target_timerange"] == {"start": 0, "duration": 1_001_000}
+        # the rect's centre in half-canvas units, x right, y up (the caption sign convention),
+        # and the scale that shows an 800x400 material in an 800x400 box of a 1080x1920 canvas
+        assert hook["clip"]["transform"] == {"x": -0.07407407407407407, "y": 0.5833333333333333}
+        assert hook["clip"]["scale"] == {"x": 0.7407407407407407, "y": 0.7407407407407407}
+        assert len(hook["extra_material_refs"]) == 6 and hook["render_index"] == 14000
+        m = next(mm for mm in d["materials"]["videos"] if mm["id"] == hook["material_id"])
+        assert Path(m["path"]).name == "card-01.mov" and (m["width"], m["height"]) == (800, 400)
+        assert segs2[0]["target_timerange"] == {"start": 500_500, "duration": 500_500}
+        assert next(mm["path"] for mm in d["materials"]["images"]) == str((media / "card-02.png").resolve())
+        check_draft(d, export)
+        # a mov card without its alpha matte beside it is rejected: CapCut reads the matte there
+        broken = copy.deepcopy(d)
+        bad = next(mm for mm in broken["materials"]["videos"]
+                   if Path(mm["path"]).name == "card-01.mov")
+        bad["path"] = str((media / "no-matte.mov").resolve())
+        assert breaks(check_draft, broken, export)
+
+        # --- cues: one audio track, one segment per cue at its time; the level is in the media ---
+        cues = [{"path": media / "sfx-01.wav", "start_f": 45, "len_f": 20, "channels": 2, "rate": 48000}]
+        (media / "sfx-01.wav").write_bytes(b"wav")
+        d = build_draft(ctx, pieces, caps=caps, cards=cards, cues=cues)
+        at = next(tr for tr in d["tracks"] if tr["type"] == "audio")
+        assert at["flag"] == 0
+        cs = at["segments"]
+        assert len(cs) == 1 and cs[0]["target_timerange"] == {"start": 750_750, "duration": 333_667}
+        assert cs[0]["volume"] == 1.0 and cs[0]["clip"] is None   # the level is in the rendered media
+        assert len(cs[0]["extra_material_refs"]) == 6
+        ref_ids = set(cs[0]["extra_material_refs"])
+        fades, beats = d["materials"]["audio_fades"], d["materials"]["beats"]
+        assert len(fades) == len(beats) == 1
+        assert fades[0]["id"] in ref_ids and beats[0]["id"] in ref_ids
+        am = next(mm for mm in d["materials"]["audios"] if mm["id"] == cs[0]["material_id"])
+        assert am["type"] == "extract_music" and Path(am["path"]).name == "sfx-01.wav"
+        check_draft(d, export)
+        # a card whose tail runs past the cut's last frame stretches the timeline, not the check:
+        # the draft's duration is the furthest end across the tracks
+        late = build_draft(ctx, pieces, cards=[{"i": 1, "kind": "video", "path": media / "card-01.mov",
+                                                "start_f": 60, "len_f": 40, "rect": [0, 0, 1080, 1920],
+                                                "lane": 1, "name": "outro"}])
+        assert late["duration"] == _us(100, ctx["rate"])
+        check_draft(late, export)
         # a broken text draft has to be rejected too
         broken = copy.deepcopy(d)
         broken["tracks"][-1]["segments"][0]["extra_material_refs"] = ["not-a-material"]

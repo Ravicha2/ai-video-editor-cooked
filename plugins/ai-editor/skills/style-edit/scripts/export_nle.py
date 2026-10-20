@@ -566,9 +566,10 @@ def capcut(ctx, cards, sfx, draft_dir=None, caps=None):
             f"{(c['rect'][1] + c['rect'][3] / 2) / H * 100:.0f}% | {c['rect'][2] / W * 100:.0f}% |" for c in cards]
     srows = [f"| {Path(s['path']).name} | {secs(s['start_f'])} |" for s in sfx]
     where = (f"A draft is at `{draft_dir.relative_to(ctx['edit']).as_posix()}/draft_info.json`: the cut's "
-             f"{len(ctx['segs'])} pieces on the main track and the {len(caps or [])} caption pages on a text track, "
-             "each piece a stable copy in `media/`. Close CapCut before copying the folder into its project "
-             "store: CapCut rewrites the store on quit."
+             f"{len(ctx['segs'])} pieces on the main track, the {len(caps or [])} caption pages on a text track, "
+             f"the {sum(1 for c in cards if c.get('path'))} cards on overlay tracks and the {len(sfx)} sound cues "
+             "on an audio track, each piece a stable copy in `media/`. Close CapCut before copying the folder "
+             "into its project store: CapCut rewrites the store on quit."
              if draft_dir else "A draft folder is written beside this file.")
     first = (f"1. Open the draft in CapCut: close CapCut, copy `{draft_dir.relative_to(ctx['edit']).as_posix()}/` "
              "into its project store, then start CapCut. The cut is already on the main track."
@@ -578,16 +579,38 @@ def capcut(ctx, cards, sfx, draft_dir=None, caps=None):
     return "\n".join([
         f"# {ctx['name']} in CapCut", "",
         where, "",
-        "The draft holds the cut only. Add the rest by hand:", "",
+        "The draft carries the cut, the captions, the rendered cards and the sound cues. What stays "
+        "for hand work:", "",
         first,
-        f"2. The captions are already on the draft's text track. Style one page (font, size, colour); "
-        "CapCut applies it to all. Prefer importing by hand instead? Captions > Add captions > "
-        f"pick `{ctx['name']}.srt`.",
-        "3. Each card below on its own overlay track at its start time. Set its position (centre, % of the "
-        "frame from the top-left) and width in the Video > Basic panel.",
-        "4. Each sound cue on an audio track at its time. Their level is already set.", "",
+        "2. Style one caption page (font, size, colour); CapCut applies it to all. Prefer importing "
+        "by hand instead? Captions > Add captions > " f"pick `{ctx['name']}.srt`.",
+        "3. A card marked (not rendered) below: place it from the table as an overlay track. Rendered "
+        "cards are already on their overlay tracks; an animated one is a .mov with its alpha matte "
+        "beside it (card-01.mov.alpha.mp4), so move the pair together if the draft is reinstalled.",
+        "4. A sound cue is on the audio track at its time, level already set in the rendered media.", "",
         "| card | file | start s | end s | centre x y | width |", "|---|---|---|---|---|---|", *rows, "",
         "| sound | start s |", "|---|---|", *srows, ""])
+
+
+def _draft_media(cards, sfx, media):
+    """Re-point the cards and cues at stable copies inside the draft folder, and render each
+    animated card's alpha matte beside it: CapCut reads a .mov's alpha only through the sibling
+    <file>.alpha.mp4 (issue #4's decompile), grayscale is what its 'alpha bake' path expects.
+    The copies keep the draft alive when the export folder gets re-cut away."""
+    media.mkdir(parents=True, exist_ok=True)
+    for c in cards:
+        if c.get("path"):
+            dst = media / f"card-{c['i']:02d}{c['path'].suffix}"
+            shutil.copy2(c["path"], dst)
+            c["path"] = dst
+            if c["kind"] == "video":
+                ffmpeg("-i", dst, "-vf", "alphaextract", "-c:v", "libx264", "-pix_fmt", "gray",
+                       media / f"{dst.name}.alpha.mp4")
+    for i, s in enumerate(sfx, 1):
+        dst = media / f"sfx-{i:02d}{s['path'].suffix}"
+        shutil.copy2(s["path"], dst)
+        s["path"] = dst
+    return cards, sfx
 
 
 def export(ctx, out, todo, render):
@@ -618,7 +641,8 @@ def export(ctx, out, todo, render):
     if "capcut" in todo:
         draft_dir = out / "capcut" / ctx["name"]
         pieces = capcut_draft.ensure_pieces(ctx, draft_dir / "media", probe=probe)
-        draft = capcut_draft.build_draft(ctx, pieces, capcut_version, caps=caps)
+        cards, cues = _draft_media(cards, sfx, draft_dir / "media")
+        draft = capcut_draft.build_draft(ctx, pieces, capcut_version, caps=caps, cards=cards, cues=cues)
         capcut_draft.check_draft(draft, out)
         (draft_dir / "draft_info.json").write_text(json.dumps(draft, ensure_ascii=False, indent=1),
                                                    encoding="utf-8")
@@ -649,7 +673,20 @@ def demo():
             "plan": {"width": 1080, "height": 1920, "fps": 30, "durationInFrames": 120,
                      "captions": {"style": {"size_pct": 5, "y_pct": 70, "font_match": "Inter", "color": "#FFFFFF", "stroke": True},
                                   "chunks": [{"text": "hello there", "start": 0.0, "end": 1.0}, {"text": "after the cut", "start": 2.2, "end": 3.0}]},
-                     "cards": []}})
+                     "cards": [{"start": 0.5, "end": 2.0, "anim": {"type": "pop"}, "trigger_word": "hook"},
+                               {"start": 1.0, "end": 3.5, "src": "card.png", "box": [10, 20, 40, 25],
+                                "trigger_word": "still"}],
+                     "sfx": [{"src": "sfx.wav", "t": 2.0}]}})
+        # the raw card pieces the demo's plan names (a card that is not rendered is a hand step)
+        plan_path = d / "plan.json"; plan_path.write_text("{}", encoding="utf-8")
+        ctx["plan_path"] = plan_path
+        ffmpeg("-f", "lavfi", "-i", "color=c=red@0.8:s=432x480:d=1", "-frames:v", "1",
+               d / "card.png")   # still card: the src card_items fits into its box
+        ffmpeg("-f", "lavfi", "-i", "sine=f=440:d=1", d / "sfx.wav")
+        (d / "export" / "media").mkdir(parents=True)   # an animated card: rendered above, cached
+        ffmpeg("-f", "lavfi", "-i", "color=c=red@0.8:s=1080x1920:d=1",
+               "-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le",
+               d / "export" / "media" / "card-01.mov")   # newer than the plan: card_items reuses it
         assert ctx["segs"] == [(0, 30, 60), (60, 150, 60)] and ctx["total_f"] == 120 and ctx["tc0"] == 108000
         assert frame_rate(29.97) == (30000, 1001) and rt(3, (30000, 1001)) == "3003/30000s" and rt(45, (30, 1)) == "45/30s"
         assert seg_at(ctx["segs"], 59) == 0 and seg_at(ctx["segs"], 60) == 1 and seg_at(ctx["segs"], 999) == 1
@@ -719,13 +756,31 @@ def demo():
             ["hello there", "after the cut"]
         assert [s["target_timerange"]["duration"] for s in tt["segments"]] == [1_000_000, 800_000]
         assert tt["segments"][0]["clip"]["transform"]["y"] == (0.5 - 70 / 100) * 2
+        # the cards as overlays, the cue on an audio track: stable copies in the draft's media
+        vtracks = [t for t in info["tracks"] if t["type"] == "video"]
+        assert len(vtracks) == 3   # main + one overlay per lane (the two cards overlap)
+        hook = vtracks[1]["segments"][0]
+        assert hook["target_timerange"] == {"start": 200_000, "duration": 2_200_000}   # frames 6, 72
+        # scene-sized: centred, scale 1.0 (the box-sized material fills the canvas)
+        assert hook["clip"]["transform"] == {"x": 0.0, "y": 0.0} and hook["clip"]["scale"] == {"x": 1.0, "y": 1.0}
+        still = vtracks[2]["segments"][0]
+        assert still["target_timerange"] == {"start": 1_000_000, "duration": 2_500_000}  # frames 30, 105
+        assert still["clip"]["transform"] == {"x": -0.4, "y": 0.35}   # box centre (10..50%, 20..45%)
+        assert still["clip"]["scale"] == {"x": 0.4, "y": 0.4}
+        cue = next(t for t in info["tracks"] if t["type"] == "audio")["segments"][0]
+        assert cue["target_timerange"] == {"start": 2_000_000, "duration": 1_000_000}   # frame 60, 1 s
+        names = sorted(p.name for p in (draft_dir / "media").iterdir())
+        assert names == ["card-01.mov", "card-01.mov.alpha.mp4", "card-02.png",
+                         "seg-01.mp4", "seg-02.mp4", "sfx-01.wav"], names
+        assert (draft_dir / "media" / "card-01.mov.alpha.mp4").stat().st_size > 0
         capcut_draft.check_draft(info, d / "export")
         # the srt is untouched: CapCut's own import stays the fallback path
         srt_out = (d / "export" / "demo.srt").read_text(encoding="utf-8")
         assert "hello there" in srt_out and "after the cut" in srt_out
-        assert sorted(p.name for p in (draft_dir / "media").iterdir()) == ["seg-01.mp4", "seg-02.mp4"]
         capcut_md = (d / "export" / "CAPCUT.md").read_text(encoding="utf-8")
-        assert "draft_info.json" in capcut_md and "text track" in capcut_md  # captions no longer a hand step
+        # the draft carries the cards and cues: the md says what already ships and what is hand
+        assert "overlay track" in capcut_md and "audio track" in capcut_md
+        assert "not rendered" in capcut_md   # a card that did not render stays a hand step
     print("demo ok")
 
 

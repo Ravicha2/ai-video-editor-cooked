@@ -26,3 +26,9 @@ One kept span of the cut, encoded on its own by `render.py` and cached in
 The words shown together at one moment: one chunk in `plan.json` (`captions.chunks`), and one
 caption on screen. A page is filled by width (Thai) or word count (Latin) and never splits a word.
 In a draft, one page is one native text segment on the text track, unstyled.
+
+## alpha matte
+
+A grayscale video beside an animated card, named `card-01.mov.alpha.mp4`: CapCut's loader reads a
+card's alpha only through that sibling file (`lvve::isHasAlphaFile`, ADR-0001). Move the pair
+together; a still card is a `.png` and needs none.

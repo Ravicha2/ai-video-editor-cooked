@@ -20,7 +20,7 @@ CapCut has no timeline import. Its desktop project is a folder of plain JSON on 
   store file and rewrites it on quit.
 - The schema version (`new_version`) moves with the app: 159 to 187 in the samples.
 - Verified by hand in CapCut 9.5 (2026-10-20): the startup scan only discovers a folder with
-  `draft_info.json` **and** a `draft_meta_info.json` beside it — `draft_info.json` alone was skipped.
+  `draft_info.json` **and** a `draft_meta_info.json` beside it: `draft_info.json` alone was skipped.
   And CapCut cannot read media under `/private/tmp`; draft media must live in the user's home.
 - A caption page's position maps from the plan's `y_pct` to `clip.transform.y = (0.5 - y_pct/100) * 2`
   (half-canvas units, negative y down: a real auto-caption draft's `y -0.8` is the 90% line).
@@ -47,8 +47,20 @@ segment on a text track, and stable copies in `media/`.
   No font, size, colour or stroke from the plan: the material carries CapCut's own plain subtitle
   defaults, as seen in a real auto-caption draft (1017), so the user styles once inside CapCut. The
   `.srt` stays unchanged for anyone who prefers CapCut's Add-captions import.
-- Keep `CAPCUT.md` as the by-hand path and the record of the cards and sound the draft does not
-  carry yet.
+- Cards become overlay video tracks above the main one, one per lane so overlapping cards stay legal
+  (issue #7). A card that renders nothing is not a segment: it stays a hand step. An animated card
+  is its ProRes `.mov` with a grayscale matte beside it, `card-01.mov.alpha.mp4`: the loader's only
+  alpha mechanism is the sibling `<file>.alpha.mp4` (`lvve::isHasAlphaFile`), so move the pair
+  together. A still card is its `.png` as an image material. Two things the local drafts could not
+  prove (no overlay or image sample exists); the CapCut smoke test decides, and the `.png` still is
+  the documented fallback: whether the decoder keeps in-band alpha from a `.mov`, and whether a
+  clip's scale 1.0 means fitted-inside-the-canvas. The card's `scale = max(w/W, h/H)` places the
+  box-sized material at its box size under that reading.
+- Sound cues become one audio track in the shape of a real local-music draft (0315 (2)): type
+  `extract_music`, six refs including fade and beats, gaps allowed, `volume 1.0` because the level
+  is already set in the rendered media (sfx.py).
+- Keep `CAPCUT.md` as the by-hand path: the caption styling, the cards that did not render, and the
+  re-install note for the `.mov` plus matte pairs.
 
 ## Consequences
 
@@ -57,5 +69,6 @@ segment on a text track, and stable copies in `media/`.
   broken project. Re-probe the loader (issue #4's method) before raising `PINNED`.
 - Drafts are installed with CapCut closed: writing into the live project store can be overwritten
   when CapCut quits. Installation is a later issue.
-- The draft holds the cut and the caption pages; the cards and sound issues live on. The schema will
-  grow, so re-run `capcut_draft.py demo` after those changes.
+- The draft now carries the cut, the caption pages, the rendered cards and the sound cues; only
+  installation (issue #8) remains. The schema will grow, so re-run `capcut_draft.py demo` after
+  those changes.
