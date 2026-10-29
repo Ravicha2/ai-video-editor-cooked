@@ -4,6 +4,8 @@
 
 cooked. edits your talking-head video for you. You give it two things:
 
+Full setup guide [here](https://nextwork.ai/projects/5610da9c-bb29-42b6-a4a4-e30420ec671d?utm_source=github&utm_medium=nextwork-projects&utm_campaign=profile&utm_content=ai-video-editor-cooked)! 
+
 1. **Your video.** It cuts out the retakes, false starts and pauses.
 2. **3 to 6 videos edited the same way.** They can come from one creator or from several. It measures
    how they are edited: cut speed, zooms, captions, cards, graphics, sound. That set of numbers is a
@@ -271,6 +273,7 @@ Your styles, skills and settings live in your library folder, not in the plugin,
 | `skill-maker` | "make a skill", "create a skill", "turn this into a skill", "help me write a skill" | |
 | `skill-improver` | "teach my style from this video", "turn my notes into rules", "make this feedback stick" | |
 | `clips` | "clip this video", "make shorts from my podcast" | a long video, a YouTube link, a podcast episode (Apple Podcasts, RSS, YouTube) |
+| `trial-reels` | "make trial reels of this", "test other hooks on this reel", "post the trial reels" | an approved reel, or its raw take |
 | `product-video` | "make a launch video for my site" | a website URL |
 | `update` | "update the editor", "get the latest version", "sync my fork" | |
 | `improve` | "improve the editor", "process suggestions" (for people working on this repo) | |

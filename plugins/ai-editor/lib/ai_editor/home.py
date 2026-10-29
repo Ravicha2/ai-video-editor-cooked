@@ -85,6 +85,7 @@ from urllib.parse import parse_qs, quote, unquote, urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import askhook  # noqa: E402
 import assets  # noqa: E402
+import broll  # noqa: E402
 import custom  # noqa: E402
 import keys  # noqa: E402
 import post  # noqa: E402
@@ -117,6 +118,7 @@ REVIEW = Path(__file__).with_name("review.py")
 HANDLE = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
 PLUGIN_JSON = Path(__file__).resolve().parents[2] / ".claude-plugin" / "plugin.json"
 RAW = "https://raw.githubusercontent.com/nextwork-projects/ai-video-editor-cooked/main/"
+REPO_GIT = "https://github.com/nextwork-projects/ai-video-editor-cooked.git"
 COVER_MAX = 50 << 20   # a style's chosen image, or a short clip to take a frame from
 SCRIPT_MAX = 200_000   # a script's text, in bytes; the file it came from may be up to 1 MB (a .docx with a logo)
 SCRIPT_EXT = (".txt", ".md", ".docx", ".pdf")
@@ -212,6 +214,51 @@ def script_text(name, data):
 
 def home():
     return Path(os.environ.get("AI_EDITOR_HOME", "").strip() or Path.home() / ".ai-video-editor") / "home"
+
+
+def claudes():
+    """The Claude page: one row per video that has had a Claude (review/.claude) or has one listening, running ones
+    first, then the latest: {"dir", "name", "video", **review.claude_state}."""
+    import review
+    out = []
+    for e in library.entries():
+        d = Path(e["dir"])
+        if not (d / "review" / ".claude").exists() and not review.listening(d):
+            continue
+        out.append({"dir": e["dir"], "name": e["name"], "video": e.get("video"), **review.claude_state(d)})
+    return sorted(out, key=lambda x: (x["state"] == "off", -(x["last"] or 0)))
+
+
+def claude_act(edit, act):
+    """Show, Start or Stop the Claude of one video in the library. (ok, what the page says)."""
+    import review
+    d = Path(str(edit or "")).resolve()
+    if not any(d == Path(x).resolve() for x in library.edit_dirs()):
+        return False, "That video is not in your library."
+    if act == "show":
+        return (True, "") if review.show_claude(d) else (False, "Its Terminal window was not found. Start Claude opens it again.")
+    if act == "stop":
+        return (True, "Stopped. Your video, notes and drafts stay.") if review.stop_claude(d) else (False, "That Claude was not running.")
+    if act == "start":
+        r = review.reopen(d, d / "review.json", force=True) or {}
+        if r.get("opened"):
+            return True, "Claude is opening in Terminal."
+        return False, ("Terminal did not open. Run this in a terminal: " + r["command"]) if r.get("command") else "Claude did not start."
+    return False, "show, start or stop"
+
+
+def staged():
+    """Where New video's added videos and images and dropped b-roll clips wait for their job: <root>/.staged/<random>/
+    (beside the edits, so linking them in is instant). Folders over a day old go on the next upload."""
+    d = Path(read()["root"]) / ".staged"
+    d.mkdir(parents=True, exist_ok=True)
+    for old in d.iterdir():   # ponytail: swept on upload only; a job made a day after its upload loses the file
+        try:
+            if time.time() - old.stat().st_mtime > 86400:
+                shutil.rmtree(old, ignore_errors=True)
+        except OSError:
+            pass
+    return d
 
 
 def state_path():
@@ -388,7 +435,8 @@ def adopt(j, sid):
 
 def asks_for(sid):
     """askhook's owner rule for the home page: the job sid is working on, "" when it only listens, else None.
-    With no session known at all (Claude Code without CLAUDE_CODE_SESSION_ID): any question, as before."""
+    Nobody listening and no job owned: only the session that started this server, or a question with no session
+    (Claude Code without CLAUDE_CODE_SESSION_ID). Another project's Claude never asks here."""
     d = read()
     taken = [j for j in reversed(d["jobs"]) if j["state"] == "taken"]
     j = next((j for j in taken if sid and j.get("owner") == sid), None)
@@ -397,7 +445,7 @@ def asks_for(sid):
     lis = listener()
     if sid and sid == lis:
         return ""
-    if not lis and not any(j.get("owner") for j in taken):
+    if not lis and not any(j.get("owner") for j in taken) and (not sid or sid == askhook.session()):
         return job_name(taken[0]) if taken else ""
     return None
 
@@ -866,7 +914,7 @@ def style_cards(root):
 CONTROLS = {"captions.size_pct": ("captions", float, 2.5, 9), "captions.words_per_caption": ("captions", int, 1, 6),
             "captions.y_pct": ("captions", float, 40, 85), "captions.preset": ("captions", "choice", None, None),
             "zoom.per_min": ("visuals", float, 0, 20), "zoom.preset": ("visuals", "choice", None, None),
-            "cut.max_pause": ("cut", float, 0.05, 3.0), "cards.on": ("visuals", bool, None, None),
+            "cut.max_pause": ("cut", float, 0.05, 3.0), "cut.max_pause_wide": ("cut", float, 0.05, 3.0), "cards.on": ("visuals", bool, None, None),
             "cards.per_min": ("visuals", float, 1, 20),
             "sfx": ("sound", bool, None, None), "music": ("sound", bool, None, None),
             "motion.amount": ("visuals", float, 0, 1), "motion.look": ("visuals", "choice", None, None),
@@ -1145,11 +1193,24 @@ def vtuple(v):
     return tuple(int(x) for x in re.findall(r"\d+", str(v or ""))[:3])
 
 
+def main_commit_raw():
+    """RAW at main's current commit. raw.githubusercontent serves a branch URL from a 5-minute cache and ignores any
+    query string, so Check now read the old version for minutes after a release; a commit URL is never stale.
+    git ls-remote has no rate limit. Without git or a network: the branch URL."""
+    try:
+        sha = subprocess.run(["git", "ls-remote", REPO_GIT, "refs/heads/main"], capture_output=True, text=True,
+                             timeout=8).stdout.split()[0]
+    except (OSError, subprocess.TimeoutExpired, IndexError):
+        return RAW
+    return RAW.replace("/main/", f"/{sha}/") if re.fullmatch(r"[0-9a-f]{40}", sha) else RAW
+
+
 def fetch_latest():
     """The version on GitHub main and the first lines of its CHANGELOG entry. (None, []) offline."""
+    base = main_commit_raw()
     try:
-        v = json.loads(urllib.request.urlopen(RAW + "plugins/ai-editor/.claude-plugin/plugin.json", timeout=5).read())["version"]
-        log = urllib.request.urlopen(RAW + "CHANGELOG.md", timeout=5).read().decode("utf-8", "replace")
+        v = json.loads(urllib.request.urlopen(base + "plugins/ai-editor/.claude-plugin/plugin.json", timeout=5).read())["version"]
+        log = urllib.request.urlopen(base + "CHANGELOG.md", timeout=5).read().decode("utf-8", "replace")
     except (OSError, ValueError, KeyError, TypeError):
         return None, []
     secs = re.split(r"(?m)^## ", log)
@@ -1175,7 +1236,7 @@ def update_info():
 
         def go():
             v, notes = fetch_latest()
-            _UPD.update(at=time.time(), busy=False, **({"latest": v, "notes": notes} if v else {}))
+            _UPD.update(at=time.time(), busy=False, offline=not v, **({"latest": v, "notes": notes} if v else {}))
         threading.Thread(target=go, daemon=True).start()
     mine = my_version()
     newer = bool(mine and _UPD["latest"] and vtuple(_UPD["latest"]) > vtuple(mine))
@@ -1191,7 +1252,7 @@ def update_info():
         except (OSError, subprocess.TimeoutExpired):
             pass
     return {"installed": mine, "latest": _UPD["latest"], "newer": newer, "notes": _UPD["notes"] if newer else [],
-            "checking": _UPD["busy"], "checked": _UPD["at"] or None, "dev": dev, "fork": fork}
+            "checking": _UPD["busy"], "checked": _UPD["at"] or None, "offline": bool(_UPD.get("offline")), "dev": dev, "fork": fork}
 
 
 def trash(p):
@@ -1642,7 +1703,10 @@ def job_line(j, root):
         return f"JOB video {src} as={a['as']} aspect={a['aspect']}" + (f" edit={a['edit']}" if a.get("edit") else "") + \
             (f" script={a['script']}" if a.get("script") else "") + (f" skill={a['skill']}" if a.get("skill") else "") + \
             (f" chain={a['chain']}" if a.get("chain") else "") + (" sample=1" if a.get("sample") else "") + \
-            (f" assets={Path(a['edit']) / 'assets.json'}" if a.get("edit") and (Path(a["edit"]) / "assets.json").exists() else "") + f" root={root}"
+            (f" assets={Path(a['edit']) / 'assets.json'}" if a.get("edit") and (Path(a["edit"]) / "assets.json").exists() else "") + \
+            (f" broll={a['broll']}" if a.get("broll") else "") + (f" instructions={a['instructions']}" if a.get("instructions") else "") + \
+            (f" mode={a['mode']}" if a.get("mode") else "") + \
+            f" root={root}"
     if j["type"] == "skill-change":
         return f"JOB skill-change {a['skill']} path={a['path']} text={a['text']}"
     if j["type"] == "skill-new":
@@ -2055,6 +2119,21 @@ def make_handler(token):
                     dict(r, duration=m["duration"], vertical=bool(m["h"] and m["w"] and m["h"] > m["w"]),
                          raw=not is_output(Path(r["path"]).resolve(), eds),
                          thumb=f"/thumb?p={quote(r['path'])}&m={int(r['mtime'])}") for r, m in zip(rs, ms)]})
+            if path == "/claudes":   # the Claude page: every video's Claude and its state
+                return self.send(200, {"claudes": claudes()})
+            if path == "/broll":   # New video's B-roll: the saved libraries and the Drive app's mounts
+                rows = broll.listing()
+                return self.send(200, {"libraries": [dict(r, thumb=f"/thumb?p={quote(r['first'])}" if r["first"] else "") for r in rows],
+                                       "drives": broll.drives()})
+            if path == "/broll/clips":   # Pick from folders: one library's clips (their pictures come from /thumb)
+                got = broll.folder_clips(q.get("name", [""])[0])
+                return self.send(200, {"clips": got}) if got is not None else self.send(404, {"clips": []})
+            if path == "/broll/browse":   # one level of a Drive folder, for Connect a folder
+                f = Path(q.get("p", [""])[0])
+                roots = [Path(x["path"]) for x in broll.drives()]
+                if not any(f == r or r in f.parents for r in roots) or not f.is_dir():
+                    return self.send(404, {"msg": "That folder is not in Google Drive."})
+                return self.send(200, broll.browse(f))
             if path == "/motion/thumb":   # a saved motion clip's thumbnail
                 try:
                     mid = q.get("id", [""])[0]
@@ -2196,7 +2275,7 @@ def make_handler(token):
                 note_check(name, k, ok, msg)
                 return self.send(200, {"ok": ok, "msg": msg})
             if path == "/update/check":   # Settings: ask GitHub now instead of within the hour
-                if not _UPD["busy"] and time.time() - _UPD["at"] > 60:   # a minute between checks, however often it is pressed
+                if not _UPD["busy"]:   # every press asks GitHub; a press while one runs gets that one's answer
                     _UPD["at"] = 0.0
                 update_info()
                 return self.send(200, {})
@@ -2445,6 +2524,25 @@ def make_handler(token):
                     return self.send(200, {"ok": False, "msg": "It could not be moved to the Trash."})
                 update(lambda d: d.__setitem__("picked", [x for x in d.get("picked") or [] if Path(x).resolve() != f]))
                 return self.send(200, {"ok": True})
+            if path == "/reel/fetch":   # New video's "Copy a reel": the reel into the library, as a clip the page picks
+                url = str(body.get("url") or "").strip()
+                it = links.classify(url) if url else {"kind": ""}
+                if it["kind"] not in ("video", "own"):
+                    return self.send(400, {"ok": False, "msg": "Paste a link to one reel or TikTok video."})
+                d = Path(read()["root"]) / "videos" / "reels" / links._slug(urlsplit(url).path.rstrip("/").split("/")[-1] or "reel")
+                d.mkdir(parents=True, exist_ok=True)
+                code, msg = links.fetch(url, d, cookies="chrome" if body.get("cookies") is True else None, max_height=1920)
+                if code:
+                    return self.send(200, {"ok": False, "code": code, "msg": msg})
+                m = library.meta(msg)
+                return self.send(200, {"ok": True, "path": msg, "name": d.name, "duration": m["duration"],
+                                       "thumb": f"/thumb?p={quote(msg)}"})
+            if path == "/claudes/act":   # the Claude page's Show, Start and Stop
+                ok, msg = claude_act(body.get("edit"), body.get("act"))
+                return self.send(200 if ok else 409, {"ok": ok, "msg": msg})
+            if path == "/broll/add":   # Connect a folder: a Drive folder picked in the browser, or a path typed in
+                err = broll.add(body.get("name"), body.get("folder"))
+                return self.send(400 if err else 200, {"ok": not err, "msg": err})
             if path == "/scanhome":   # the one-time opt-in: recent clips from Movies, Desktop and Downloads
                 update(lambda d: d.__setitem__("scan_home", body.get("on") is True))
                 return self.send(200, {})
@@ -2463,6 +2561,13 @@ def make_handler(token):
                 import launcher
                 st, cmd = launcher.connect(read()["root"])
                 return self.send(200, {"status": st, "command": cmd})
+            if path == "/stop" and body.get("edit"):   # {edit}: Stop on a video Claude is fixing from its review page
+                e = Path(str(body["edit"])).resolve()
+                if e not in library.edit_dirs():
+                    return self.send(400, {"ok": False, "msg": "That is not one of your videos."})
+                import review
+                err = review.stop_round(e)   # the same Stop as the review page's: notes open again, Claude stops
+                return self.send(409 if err else 200, {"ok": not err, "stopped": not err, **({"msg": err} if err else {})})
             if path == "/stop":   # {id}: the sidebar's Stop. The job ends, and its Claude stops at its next step (toolhook)
                 def st(d):
                     j = next((j for j in d["jobs"] if j["id"] == body.get("id")), None)
@@ -2621,9 +2726,13 @@ def make_handler(token):
             script = str(b.get("script") or "").strip()
             if len(script.encode("utf-8")) > SCRIPT_MAX:
                 return self.send(400, {"ok": False, "msg": "That script is over 200 KB. Paste only the lines you film."})
-            adds = [x for x in b.get("assets") or [] if isinstance(x, dict)][:askhook.MAX_IMAGES + assets.MAX_LINKS]
-            if sum(bool(x.get("image")) for x in adds) > askhook.MAX_IMAGES:
-                return self.send(400, {"ok": False, "msg": f"{askhook.MAX_IMAGES} images at most."})
+            adds = [x for x in b.get("assets") or [] if isinstance(x, dict)]
+            if len(adds) > assets.MAX_ITEMS:
+                return self.send(400, {"ok": False, "msg": f"{assets.MAX_ITEMS} videos, images or links at most."})
+            picks = [str(x) for x in b.get("broll_clips") or []][:broll.MAX_CLIPS]   # B-roll's Specific clips
+            reel = b.get("mode") == "broll-reel"   # a reel to copy onto the user's b-roll (broll-reel skill)
+            if reel and (len(ps) != 1 or not broll.libraries()):
+                return self.send(400, {"ok": False, "msg": "Connect a b-roll folder first." if len(ps) == 1 else "Copy one reel at a time."})
             groups = [ps] if b.get("join") and len(ps) > 1 else [[p] for p in ps]
             ids, edits = [], []
 
@@ -2635,7 +2744,8 @@ def make_handler(token):
             # the same clips in the same style while their video waits for its Claude (Make pressed again because that
             # Terminal window did not start): that video again, never a second job and a second Claude
             making = {tuple(j["args"].get("paths") or [j["args"].get("path")]): j for j in d["jobs"]
-                      if j["type"] == "video" and j["state"] == "queued" and j["args"].get("as") == style}
+                      if j["type"] == "video" and j["state"] == "queued" and j["args"].get("as") == style
+                      and j["args"].get("mode") == ("broll-reel" if reel else None)}
             again = []
             for g in groups:
                 same = making.get(tuple(p["path"] for p in g))
@@ -2643,10 +2753,15 @@ def make_handler(token):
                     ids.append(same["id"])
                     edits.append(same["args"]["edit"])
                     again.append(same["id"])
+                    extra = broll.brief(same["args"]["edit"], [str(x) for x in b.get("broll") or []], b.get("note"), b.get("broll_auto") is True,
+                                        picks, staged())
+                    if extra:   # the B-roll and instructions of this press, not only the first one's
+                        update(lambda d, i=same["id"], x=extra: next(j for j in d["jobs"] if j["id"] == i)["args"].update(x))
                     continue
                 edit = new_edit(Path(d["root"]), SAMPLE_NAME if sample else g[0]["name"])
-                args = {"path": g[0]["path"], "paths": [p["path"] for p in g], "as": style, "aspect": aspect, "edit": str(edit),
-                        **({"skill": skill} if skill else {}), **({"chain": chain} if chain else {})}
+                args = {"path": g[0]["path"], "paths": [p["path"] for p in g], "as": style, "aspect": "9:16" if reel else aspect,
+                        "edit": str(edit), **({"skill": skill} if skill else {}), **({"chain": chain} if chain else {}),
+                        **({"mode": "broll-reel"} if reel else {})}
                 if len(g) > 1:
                     t = edit / "takes.txt"
                     t.write_text("\n".join(p["path"] for p in g) + "\n", encoding="utf-8")
@@ -2654,7 +2769,9 @@ def make_handler(token):
                 if script:   # the text only, in the edit folder; the cut's script_match.py reads it there
                     (edit / "script.md").write_text(script + "\n", encoding="utf-8")
                     args["script"] = str(edit / "script.md")
-                assets.add(edit, adds)   # "Add images or links": edit/assets/ + assets.json, before the job line is read
+                assets.add(edit, adds, staged())   # "Add videos, images or links": edit/assets/ + assets.json, before the job line is read
+                args.update(broll.brief(edit, [str(x) for x in b.get("broll") or []], b.get("note"), b.get("broll_auto") is True,
+                                        picks, staged()))   # B-roll ticks, Specific clips + Additional instructions
                 if not sample:   # the style the user picked, in the edit before any Claude takes it (the sample ships its own)
                     seed_style(args, d["root"])
                 if sample:   # its transcript, cut, style and visuals, so Claude skips transcribing, deciding and judging
@@ -2667,7 +2784,7 @@ def make_handler(token):
                 ids.append(update(lambda d: queue(d, "video", args))["id"])
                 edits.append(str(edit))
                 # the editor opens at once on the clip (round 0, "The cut / your clip"); Claude's cut lands there
-                subprocess.run([sys.executable, str(REVIEW), str(edit), "start", "--raw", "--video", g[0]["path"], "--stage", "cut"],
+                subprocess.run([sys.executable, str(REVIEW), str(edit), "start", "--raw", "--video", g[0]["path"], "--stage", "edit" if reel else "cut"],
                                capture_output=True, timeout=60)
                 if sample:   # its name in Your videos and on the editor
                     rj = edit / "review.json"
@@ -2729,13 +2846,21 @@ def make_handler(token):
 
         def upload(self):
             """A dropped video: streamed to <root>/videos/<name>, never held in memory. ?ref=1: a file for Analyse a
-            format (a video, picture, PDF or text) to <root>/references/<name>, handed to the teardown as files=."""
+            format (a video, picture, PDF or text) to <root>/references/<name>, handed to the teardown as files=.
+            ?stage=1: a video or image for "Add videos, images or links" or B-roll's Specific clips, to staged(),
+            linked into the edit when the job is made (assets.add, broll.brief)."""
             q = parse_qs(urlsplit(self.path).query)
-            name, ref = Path(unquote(q.get("name", [""])[0])).name, q.get("ref") == ["1"]
+            name, ref, stage = Path(unquote(q.get("name", [""])[0])).name, q.get("ref") == ["1"], q.get("stage") == ["1"]
             n = body_len(self.headers)
-            if not name.lower().endswith(REF_EXT if ref else links.VIDEO_EXT) or n <= 0:
+            if stage:
+                kind = assets.kind_of(name) or ("video" if Path(name).suffix.lower() in broll.EXTS else None)
+                if not kind or n <= 0:
+                    return self.send(400, {"ok": False, "msg": "Add a video (.mp4, .mov, .m4v, .webm) or an image (.png, .jpg, .gif, .webp)."})
+                if n > (askhook.MAX_IMAGE if kind == "image" else assets.MAX_VIDEO):
+                    return self.send(400, {"ok": False, "msg": f"{name} is over {'15 MB' if kind == 'image' else '2 GB'}."})
+            elif not name.lower().endswith(REF_EXT if ref else links.VIDEO_EXT) or n <= 0:
                 return self.send(400, {"ok": False, "msg": "Add a video, picture, PDF or text file." if ref else "Drop a .mov, .mp4 or .mkv video."})
-            out = Path(read()["root"]) / ("references" if ref else "videos") / name
+            out = staged() / secrets.token_hex(6) / name if stage else Path(read()["root"]) / ("references" if ref else "videos") / name
             out.parent.mkdir(parents=True, exist_ok=True)
             k = 1
             while out.exists() and out.stat().st_size != n:   # another file with this name: never overwrite it
@@ -2754,6 +2879,8 @@ def make_handler(token):
                 tmp.unlink(missing_ok=True)
                 return self.send(400, {"ok": False, "msg": "The upload stopped part way. Drop it again."})
             os.replace(tmp, out)
+            if stage:
+                return self.send(200, {"ok": True, "path": str(out), "name": out.name, "kind": kind})
             return self.send(200, {"ok": True, "path": str(out), "name": out.name} if ref else added(probe(str(out))))
     return H
 
@@ -3134,6 +3261,11 @@ def demo():
         assert e.code == 409
     finally:
         os.environ.pop("GEMINI_API_KEY")
+    u0 = main_commit_raw()   # a commit URL (never the CDN's stale branch copy), or the branch URL offline
+    assert u0 == RAW or re.fullmatch(re.escape(RAW.replace("/main/", "/")) + r"[0-9a-f]{40}/", u0), u0
+    keep_git, globals()["REPO_GIT"] = REPO_GIT, str(Path(tempfile.gettempdir()) / "no-such-repo")
+    assert main_commit_raw() == RAW, "no repo answers: the branch URL"
+    globals()["REPO_GIT"] = keep_git
     post("/update/check", {})
     for _ in range(50):
         if get("/state")["update"]["latest"]:
@@ -3143,18 +3275,19 @@ def demo():
     assert u["latest"] == "99.0.0" and u["newer"] and u["checked"] and u["notes"] == ["Dark mode in the window"], u
     seen = []
     globals()["fetch_latest"] = lambda: seen.append(1) or ("99.0.0", ["Dark mode in the window"])
-    for _ in range(5):   # pressed again and again within the minute: no new GitHub check
-        post("/update/check", {})
-    time.sleep(0.1)
-    assert not seen and get("/state")["update"]["checked"] == u["checked"], seen
     assert get("/state")["update"]["dev"] is any((q / ".git").exists() for q in PLUGIN_JSON.resolve().parents), "a git checkout: update with git"
-    _UPD["at"] -= 61   # a minute later: one press checks again
+    for n in (1, 2, 3):   # every press asks GitHub again, however soon after the last
+        post("/update/check", {})
+        for _ in range(50):
+            if len(seen) == n and not _UPD["busy"]:
+                break
+            time.sleep(0.02)
+        assert len(seen) == n, (n, seen)
+    _UPD["busy"] = True   # a press while a check runs waits for that check: no second request
     post("/update/check", {})
-    for _ in range(50):
-        if seen:
-            break
-        time.sleep(0.02)
-    assert seen == [1], seen
+    time.sleep(0.1)
+    assert len(seen) == 3, seen
+    _UPD["busy"] = False
     # the paste: a profile link names the platform; a bare name is a handle; a website is not a creator
     r = post("/lookup", {"text": "https://www.tiktok.com/@sample.creator"})
     assert r["kind"] == "creator" and r["handle"] == "sample.creator" and r["platform"] == "tiktok" and calls, r
@@ -3442,11 +3575,48 @@ def demo():
         assert [x.get("url") or x["name"] for x in items] == ["https://github.com/a/b", "chart.png", "big.png"], items
         assert items[0]["site"] == "github" and items[1]["say"] == "the chart" and (Path(e) / items[1]["src"]).is_file()
         assert f" assets={Path(e) / 'assets.json'} " in job_line(next(j for j in read()["jobs"] if j["id"] == jid), root)
+    # B-roll: a library connected from the page, ticked (or Claude decides) and the Additional instructions, with the job
+    assert get("/broll")["libraries"] == []
+    assert post("/broll/add", {"name": "Desk", "folder": str(vid.parent)})["ok"]
+    lib = get("/broll")["libraries"][0]
+    assert lib["name"] == "Desk" and lib["clips"] >= 1 and lib["thumb"].startswith("/thumb?p="), lib
+    try:
+        get("/broll/browse?p=" + quote(str(vid.parent)))
+        raise AssertionError("a folder outside Google Drive was browsed")
+    except urllib.error.HTTPError as e:
+        assert e.code == 404
+    r4 = post("/job", {"type": "video", "path": str(vid), "as": "mine", "broll": ["Desk", "Nope"], "note": "Desk for the intro."})
+    e4, line = Path(r4["edits"][0]), job_line(latest(read(), "video"), root)
+    assert json.loads((e4 / "broll.json").read_text(encoding="utf-8")) == {"auto": False, "libraries": [{"name": "Desk", "folder": str(vid.parent)}]}
+    assert f" broll={e4 / 'broll.json'} instructions={e4 / 'instructions.md'} " in line, line
+    r5 = post("/job", {"type": "video", "path": str(vid), "as": "mine", "broll_auto": True})   # Make again on the waiting job: its new picks
+    assert r5["edits"] == r4["edits"] and json.loads((e4 / "broll.json").read_text(encoding="utf-8"))["auto"] is True
+    # Specific clips: one dropped (?stage=1, linked in), one picked from the Desk folder (/broll/clips)
+    sg = json.loads(urllib.request.urlopen(urllib.request.Request(base + "/upload?stage=1&name=extra.mp4&t=" + tok, vid.read_bytes(), method="POST")).read())
+    assert sg["ok"] and sg["kind"] == "video" and staged() in Path(sg["path"]).parents, sg
+    assert vid.name in [c["name"] for c in get("/broll/clips?name=Desk")["clips"]]
+    try:
+        urllib.request.urlopen(urllib.request.Request(base + "/upload?stage=1&name=x.txt&t=" + tok, b"x", method="POST"))
+        raise AssertionError("a text file was staged")
+    except urllib.error.HTTPError as e:
+        assert e.code == 400
+    post("/job", {"type": "video", "path": str(vid), "as": "mine", "broll": ["Desk"], "broll_clips": [sg["path"], str(vid), "/etc/hosts"]})
+    assert [c["name"] for c in json.loads((e4 / "broll.json").read_text(encoding="utf-8"))["clips"]] == ["extra.mp4", vid.name]
+    assert (e4 / "broll" / "extra.mp4").is_file()
+    # Copy a reel: the same clip as a b-roll reel is its own job, editor open at the edit stage, mode= on the line
+    r6 = post("/job", {"type": "video", "path": str(vid), "as": "mine", "mode": "broll-reel", "broll_auto": True})
+    assert r6["edits"] != r4["edits"] and " mode=broll-reel " in job_line(latest(read(), "video"), root)
+    assert json.loads((Path(r6["edits"][0]) / "review.json").read_text(encoding="utf-8"))["stage"] == "edit"
+    try:
+        post("/reel/fetch", {"url": "not a link"})
+        raise AssertionError("a non-link was fetched")
+    except urllib.error.HTTPError as e:
+        assert e.code == 400
     assert takeable(next(j for j in read()["jobs"] if j["id"] == r2["ids"][0]), "sess-L", read())
     assert not takeable(next(j for j in read()["jobs"] if j["id"] == r2["ids"][1]), "sess-L", read()), "the other Claude's job"
     try:
-        post("/job", {"type": "video", "path": str(vid), "as": "mine", "assets": [{"image": png}] * (askhook.MAX_IMAGES + 1)})
-        raise AssertionError("13 images were taken")
+        post("/job", {"type": "video", "path": str(vid), "as": "mine", "assets": [{"url": f"https://a.co/{i}"} for i in range(assets.MAX_ITEMS + 1)]})
+        raise AssertionError("51 assets were taken")
     except urllib.error.HTTPError as e:
         assert e.code == 400
     (home() / ".listening").unlink()
@@ -4041,6 +4211,19 @@ def demo():
         assert next(v for v in get("/library")["videos"] if v["dir"] == str(hid.resolve()))["name"] == "My first video"
         assert post("/edit/rename", {"dir": str(hid), "name": ""})["ok"]
         assert next(v for v in get("/library")["videos"] if v["dir"] == str(hid.resolve()))["name"] == "hide-me"
+        # the sidebar's Stop on a video Claude is fixing from its review page: the round comes back, notes open again
+        (hid / "review.json").write_text(json.dumps({"stage": "edit", "round": 1, "sent": True, "comments": [],
+                                                     "events": [{"type": "send", "stage": "edit", "round": 1, "handled": False}]}),
+                                         encoding="utf-8")
+        assert next(v for v in get("/library")["videos"] if v["dir"] == str(hid.resolve()))["status"] == "making"
+        assert post("/stop", {"edit": str(hid)})["stopped"]
+        rv = json.loads((hid / "review.json").read_text(encoding="utf-8"))
+        assert not rv["sent"] and rv["stopped"] and rv["events"][-1]["type"] == "stop", rv
+        try:
+            post("/stop", {"edit": str(tmp)})
+            raise AssertionError("a folder that is not a video")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
         for bad in ({"dir": str(tmp), "name": "x"}, {"dir": str(hid), "name": "x" * 81}):
             try:
                 post("/edit/rename", bad)
@@ -4284,6 +4467,14 @@ def demo():
     if os.name != "nt":
         assert (home() / "token").stat().st_mode & 0o777 == 0o600
     s2.server_close()
+    # the Claude page: only videos that had a Claude; an edit outside the library is refused
+    assert claude_act(str(tmp / "elsewhere"), "stop") == (False, "That video is not in your library.")
+    ed = Path(library.entries()[0]["dir"])
+    (ed / "review").mkdir(exist_ok=True)
+    (ed / "review" / ".claude").write_text(json.dumps({"pid": 999999}), encoding="utf-8")
+    cl = [c for c in claudes() if c["dir"] == str(ed)]
+    assert cl and cl[0]["state"] == "off" and cl[0]["last"], cl
+    assert claude_act(str(ed), "stop") == (False, "That Claude was not running.") and claude_act(str(ed), "jump")[0] is False
     shutil.rmtree(tmp, ignore_errors=True)
     print("home demo ok")
 

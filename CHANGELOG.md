@@ -23,6 +23,55 @@ What changed for every user, newest first.
 - The caption contrast check reads inside a stroked caption's outline instead of the footage beyond it.
 - Fonts load the Thai subset when the family has it, so Thai text is not tofu boxes on the render machine.
 
+## ai-editor 2.7.28, creator-teardown 2.7.28 (2026-10-24)
+- One Claude control on the video page: a dot and what Claude is doing (working on your notes, waiting for your notes, open, or not running), with one button. Show Claude brings its Terminal window to the front; Start Claude carries on in the Claude that worked on the video. Copy for Claude, Copy session and Open a new Claude are gone.
+- A Claude page in the editor window lists every video's Claude with Show, Stop and Start, and the sidebar says how many are running. Stop closes that Claude; the video, notes and drafts stay.
+- Feedback on trial reels once they are made: a box under them on the Trial reels tab, for the trial on screen (at the moment you are on) or all of them. Claude changes those trials, puts each back in the Version menu, and answers under your note.
+
+## ai-editor 2.7.27, creator-teardown 2.7.27 (2026-10-24)
+- Teach your style from this video says where the rules go: a Save to list with this video's style first, your other styles, and New style from this video (a named copy of the style with these rules).
+- YouTube (16:9) cuts breathe: pauses up to 0.30 s instead of a reel's 0.15 s, and Claude keeps each joke's beat as you said it (before a punchline, after a joke, before a reaction), up to 1.2 s.
+- Trial reels: a trial-reels skill makes versions of an approved reel that each look like a different video (the type first: story, list or pitch), puts them on the Trial reels tab, and posts only the ones you pick, spread over the day. Posting can graduate a Trial Reel automatically or only when you say.
+- Two caption edits made right after each other no longer drop the first one from the note.
+
+## ai-editor 2.7.26, creator-teardown 2.7.26 (2026-10-23)
+- New video: "Add images or links" is now "Add videos, images or links". Choose, drop or paste videos (up to 2 GB each) as well as pictures and links, up to 50 in all. Each file uploads on its own with a progress bar; a video shows a frame from it. Claude puts each one in first, on its "Show when I say..." words.
+- B-roll has Specific clips: drag clips in, choose files, or Pick from folders to tick clips inside a connected folder. Every specific clip goes in the video; the ticked folders fill the rest.
+- The video page's "Anything to add?" takes videos too, uploaded one at a time with progress.
+- The timeline zooms and pans like CapCut: Cmd + scroll or pinch zooms where the pointer is, a sideways swipe or Shift + scroll moves along, and -, a slider, + and Fit sit above it (Cmd = and Cmd - zoom, Shift Z fits). While playing it follows the playhead. Text, Captions and Sounds rows zoom with it.
+- Full screen has controls: a scrub bar that shows the time where you point, play, -5s and +5s, the time, and Exit full screen. They hide while playing and come back when you move the mouse.
+
+## ai-editor 2.7.25, creator-teardown 2.7.25 (2026-10-21)
+- Text and Sounds rows under the timeline on the edit, like CapCut's: each clip is as long as it lasts, a sound shows its waveform, with a ruler, a playhead and - / + zoom (it opens at about 15 s a screen). A Captions row shows every caption line; click one on the timeline or on the video to retype it in the Captions panel's Lines (Enter saves and goes to the next line), x takes a line out. + Text and + Sound add one at the playhead (+ Sound picks from your sound library, each with Play). Click a text to change it, click a sound to hear it in place, and x on any of them takes it out.
+
+## ai-editor 2.7.24, creator-teardown 2.7.24 (2026-10-21)
+- A Sounds tool beside Text and Captions: the sound library. Each moment that gets a sound (a card slides in, a logo pops, a zoom, a big moment, an impact, a card leaves) has Play, Default, Off and your own sound files (+ Your own). Picks are for every video.
+- Click a card (a picture, a page, a logo) on the edit to move it, resize it from a corner, or delete it. Reels keep it inside the safe zone.
+- A Captions tool beside Text: how many words show at a time (1, 3, 5 or a sentence) and the caption look, for this video.
+- Text has its own panel on the left, like Tella: the Text tool in the menu opens it, Notes stay on the right. Pick a look (Plain, Outline, Box), type, drag it on the video. Click any text, in the list or on the video, to change its words, look, place or time (Start here, End here), or Delete it. Sent texts change too.
+- The left menu has Check for updates, always, on the video page and the home window. It turns into Update to <version> when one is out, and says when you are up to date.
+
+## ai-editor 2.7.23, creator-teardown 2.7.23 (2026-10-21)
+- Sending notes with no Claude listening goes to the Claude that worked on the video first: still open in Terminal, the notes are typed into it; closed, its conversation opens again. A new Claude only when there is neither.
+- The Claude card on the video page has Copy session: the command that opens that Claude's conversation in a terminal.
+
+## ai-editor 2.7.22, creator-teardown 2.7.22 (2026-10-20)
+- Check now sees a new release the moment it is out. It read GitHub's 5-minute cached copy before, so a fresh release could still show as the old one.
+
+## ai-editor 2.7.21, creator-teardown 2.7.21 (2026-10-20)
+- Check now asks GitHub on every press. A press while a check is running waits for that check.
+
+## ai-editor 2.7.20, creator-teardown 2.7.20 (2026-10-20)
+- The sidebar's Making card has Stop for a video Claude is fixing from its review page, the same Stop as on that page.
+- Settings' Check now asks GitHub on every press (10 s apart), skips GitHub's 5-minute cached copy, waits for the answer and says when it last checked.
+- New video has a B-roll section (tick your Drive folders, or leave Claude decides on) and an Additional instructions for Claude box. Copy a reel takes a reel link and remakes it with your b-roll, the reel's words on screen and its sound, then opens it in the editor.
+- Settings has an Auto-post your videos card: paste a Zernio key, connect any number of Instagram, TikTok, YouTube and other accounts, and Claude posts an approved video now or at a set time. A video's ⋯ menu has Rename.
+- Questions from a Claude that is not working on a video (another project, research, setup in another folder) stay in its own terminal. They no longer pop up on Home or a video's page.
+- Sending notes or approving with no Claude on that video opens a new Claude in its own Terminal window that carries on with the edit. A video whose Claude stopped mid-round shows "Stopped? Open a new Claude".
+- Copy for Claude on the video page: when the Claude that made a video is closed or stopped answering, one button copies what a new Claude Code session needs to pick the edit up and apply your notes. The page no longer says Claude is working when it has stopped.
+- Dragging a video or a style into a folder moves it: Your videos and Styles show only what is in no folder, and their counts match.
+- Add text on the edit: T in the note box, type, drag it on the video, pick Plain (white), Outline (white with a black edge) or Box (black on white). It renders as typed on the next draft, for 3 s or over an i/o range.
+- The video page's left menu always shows. With the window closed, a click opens it.
 - A video's versions are one Version dropdown beside Watch and Compare, so long names no longer squeeze the player bar.
 - A finished reel gets a Trial reels tab: Claude's spare hooks and versions, a type menu per version (pick several, or let Claude decide), Add a version, Ask Claude, and Make. Trial reels list under their own heading in the Version dropdown.
 

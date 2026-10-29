@@ -56,7 +56,6 @@ button.ritem{border:0;background:none;font:inherit;font-size:12px;line-height:14
 .ritem.rjob svg{position:absolute;left:13px;top:5px}
 .rail .themebtn{width:36px;height:36px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--ink);display:grid;place-items:center;flex-shrink:0}
 .rail .themebtn:hover{border-color:var(--line2)}
-.nohome [data-home]{display:none!important}
 /* expanded: labels beside the icons */
 body.railx .rail{width:232px;align-items:stretch;padding:16px 12px}
 body.railx .rtop{flex-direction:row;gap:10px}body.railx .rname{display:block}body.railx .rtog{margin-left:auto}
@@ -91,6 +90,15 @@ header{position:relative;height:56px;flex-shrink:0;display:flex;align-items:cent
 .status.work i{display:inline-flex;color:var(--ink);animation:spin .9s linear infinite}
 .status .stp{font-weight:400;color:var(--body)}
 .status span{overflow:hidden;text-overflow:ellipsis}
+/* the Claude control: one dot, its state in words, one button (Show Claude or Start Claude) */
+.clc{display:flex;align-items:center;gap:10px;height:36px;padding:0 4px 0 12px;border:1px solid var(--line2);border-radius:10px;font-size:13px;color:var(--body);white-space:nowrap;flex-shrink:0}
+.clc[hidden]{display:none}
+.status .clc>i{display:block;width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--muted);animation:none}
+.status .clc.waiting>i,.status .clc.open>i,.status .clc.working>i{background:var(--ok)}
+.status .clc.working>i{animation:pulse 1.2s ease-in-out infinite}
+.clc button{height:28px;padding:0 10px;border-radius:7px;border:1px solid var(--line2);background:var(--raise);color:var(--strong);font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.clc button.go{background:var(--ink);border-color:var(--ink);color:var(--onink)}
+.clc button:disabled{opacity:.5}
 #howbtn{width:32px;height:32px;border-radius:8px;border:1px solid var(--line2);display:grid;place-items:center;color:var(--ink);flex-shrink:0}
 #howbtn:hover{border-color:var(--ink)}
 .mtheme{display:none}
@@ -149,6 +157,20 @@ body.compare #p1 .player{outline:2px solid var(--ink);outline-offset:3px}
 video{width:100%;height:100%;display:block;object-fit:contain;background:var(--film);cursor:pointer}
 #oldbadge{display:none;position:absolute;top:12px;left:12px;padding:5px 10px;border-radius:8px;background:var(--panel);font-size:13px;z-index:2}
 .player:fullscreen video{object-fit:contain}
+/* full screen: a bar over the foot of the picture to scrub, play and step; it hides after 2 s with no mouse while playing */
+.fsbar{display:none}
+.player:fullscreen .fsbar{display:flex;flex-direction:column;gap:12px;position:absolute;left:0;right:0;bottom:0;z-index:5;padding:40px 28px 20px;background:linear-gradient(transparent,rgba(12,10,9,.72));color:#FFFFFF;transition:opacity .25s}
+.player:fullscreen.fsidle .fsbar{opacity:0;pointer-events:none}.player:fullscreen.fsidle,.player:fullscreen.fsidle video{cursor:none}
+.fsscrub{position:relative;height:16px;cursor:pointer;touch-action:none}
+.fsscrub::before{content:'';position:absolute;left:0;right:0;top:6px;height:4px;border-radius:2px;background:rgba(255,255,255,.3)}
+.fsscrub i{position:absolute;left:0;top:6px;height:4px;border-radius:2px;background:#FFFFFF}
+.fsscrub:hover::before,.fsscrub:hover i{top:5px;height:6px}
+.fsscrub b{position:absolute;top:2px;width:12px;height:12px;margin-left:-6px;border-radius:6px;background:#FFFFFF}
+.fsscrub span{display:none;position:absolute;bottom:22px;padding:3px 8px;border-radius:6px;background:rgba(12,10,9,.8);font-size:12px;line-height:16px;transform:translateX(-50%);white-space:nowrap;pointer-events:none}
+.fsrow{display:flex;align-items:center;gap:8px}
+.fsrow button{display:inline-flex;align-items:center;justify-content:center;height:32px;min-width:32px;padding:0 10px;border-radius:8px;color:#FFFFFF;font-size:13px;font-weight:600;white-space:nowrap}
+.fsrow button:hover{background:rgba(255,255,255,.14)}
+#fstime{padding-left:6px;font-size:14px;color:rgba(255,255,255,.72)}#fstime b{font-weight:600;color:#FFFFFF}
 .sz{display:none}
 .player.safe .sz{display:block;position:absolute;pointer-events:none}
 .sz i{position:absolute;background:var(--shade)}
@@ -160,7 +182,7 @@ video{width:100%;height:100%;display:block;object-fit:contain;background:var(--f
 .hits .hit{position:absolute;pointer-events:auto;cursor:pointer;border-radius:6px;padding:0;background:none}
 .player:hover .hits .hit{outline:1px dashed rgba(255,255,255,.5);outline-offset:-1px}
 .hits .hit:hover,.hits .hit:focus-visible{outline:2px solid #FFFFFF;outline-offset:-1px;box-shadow:inset 0 0 0 3px rgba(0,0,0,.35)}
-.hits .hit span{display:none;position:absolute;left:6px;top:6px;padding:3px 8px;border-radius:6px;background:var(--pill);color:var(--pilltx);font-size:12px;line-height:16px;font-weight:500;white-space:nowrap}
+.hits .hit span{display:none;position:absolute;left:4px;top:4px;max-width:calc(100% - 8px);overflow:hidden;text-overflow:ellipsis;padding:3px 8px;border-radius:6px;background:var(--pill);color:var(--pilltx);font-size:12px;line-height:16px;font-weight:500;white-space:nowrap}
 .hits .hit:hover span,.hits .hit:focus-visible span{display:block}
 .hits .ztag{right:10px;top:10px;height:24px;padding:0 9px;border-radius:6px;background:rgba(12,10,9,.55);color:#FFFFFF;font-size:12px;font-weight:500;opacity:0;transition:opacity .15s}
 .player:hover .hits .ztag,.hits .ztag:focus-visible{opacity:1;outline:0}
@@ -258,10 +280,47 @@ body.preview #pins,body.preview #cmprow{visibility:hidden}
 #ticks span.cur{color:var(--ink)}
 #ticks span.end{right:0}
 #tracks{display:none}
+/* zoom: every row is laid out in % of #tinner, so one width (--zm x the view) keeps pins, bar, ticks and marks lined up */
+.tzoom{display:flex;align-items:center;justify-content:flex-end;gap:2px;height:22px;font-size:12px;color:var(--muted)}
+.tzoom button{width:22px;height:22px;border-radius:5px;font-size:14px;line-height:1;color:var(--ink)}.tzoom button:hover{background:var(--hover)}.tzoom button:disabled{opacity:.3}
+.tzoom .tfit{width:auto;padding:0 8px;margin-left:4px;font-size:12px;font-weight:600;border:1px solid var(--line2)}
+#tzr{width:96px;margin:0 4px;accent-color:var(--ink);cursor:pointer}
+#tscroll{overflow-x:auto;overflow-y:hidden;padding:8px 8px 0;margin:-8px -8px 0}   /* the padding keeps the knob, pins and hover time from being clipped */
+#tinner{position:relative;width:calc(var(--zm,1)*100%);display:flex;flex-direction:column;gap:6px}
+#tscroll::-webkit-scrollbar,.escroll::-webkit-scrollbar{height:8px}#tscroll::-webkit-scrollbar-thumb,.escroll::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px}
+#tscroll::-webkit-scrollbar-thumb:hover,.escroll::-webkit-scrollbar-thumb:hover{background:var(--quiet)}
+.timeline.edon #tscroll{margin:-8px 0 0 84px;padding:8px 0 0}.timeline.edon #tscroll::-webkit-scrollbar{display:none}   /* lined up over the Text and Sounds rows, whose scrollbar it shares */
 .mini{display:none}
 .timeline.tracked .mini{display:block;height:8px;margin-top:10px;border-radius:2px;background:var(--rail)}
 .mini i{position:absolute;top:0;height:8px;border-radius:2px;background:var(--quiet);cursor:pointer}.mini i.z{background:var(--ink)}
 .mini i:hover{outline:2px solid var(--ink);outline-offset:1px}
+/* the edit's Text and Sounds rows under the timeline, like CapCut's: clips as long as they last (a sound shows its
+   waveform), a ruler and a playhead; - and + zoom in and the rows scroll. Click to change or hear, x takes it out. */
+#edtracks{margin-top:12px}#edtracks:empty{display:none}
+.edwrap{display:flex}
+.edleft{width:84px;flex-shrink:0;display:flex;flex-direction:column;gap:6px;padding:30px 8px 0 0}
+.edleft button{height:30px;border-radius:7px;border:1px dashed var(--line2);font-size:12px;font-weight:600;color:var(--body);text-align:left;padding:0 8px;white-space:nowrap}
+.edleft button:hover{border-color:var(--ink);color:var(--ink)}
+.edright{flex:1;min-width:0;position:relative}
+.escroll{overflow-x:auto;overflow-y:visible;padding-top:8px}
+.einner{position:relative;width:calc(var(--zm,1)*100%)}
+.eruler{position:relative;height:16px;font-size:10px;line-height:12px;color:var(--quiet)}.eruler span{position:absolute;top:0;padding-left:3px;border-left:1px solid var(--line2);white-space:nowrap}
+.etrack{position:relative;height:30px;margin-top:6px;border-radius:6px;background:var(--rail);cursor:pointer}
+.eitem{position:absolute;top:3px;height:24px;border-radius:5px;border:1px solid var(--line2);display:flex;align-items:center;font-size:11px;line-height:14px;font-weight:600;cursor:pointer;min-width:10px}
+.eitem.txt{background:#4B3E91;border-color:#6E5FD0;color:#FFFFFF;padding:0 6px}.eitem.txt span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.eitem.cap{background:#7A5B12;border-color:#B88A1F;color:#FFFFFF;padding:0 6px}.eitem.cap span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;font-weight:500}
+.eitem.snd{background:#1F5C4A;border-color:#2F8C6F;color:#FFFFFF;overflow:hidden}
+.eitem.snd svg.wv{position:absolute;inset:2px 0;width:100%;height:calc(100% - 4px)}
+.eitem.snd.narrow span{display:none}.eitem.snd.narrow:hover span{display:block;position:absolute;bottom:28px;left:0;background:var(--ink);color:var(--onink);border-radius:5px;padding:2px 6px}
+.eitem.snd span{position:relative;padding:0 5px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.eitem:hover{border-color:#FFFFFF;z-index:2;overflow:visible}.eitem.pend{border-style:dashed}.eitem.gone{opacity:.3;pointer-events:none}
+.eitem .ex{display:none;position:absolute;top:-8px;right:-8px;width:16px;height:16px;border-radius:8px;place-items:center;font-size:12px;line-height:1;color:var(--onink);background:var(--ink);box-shadow:0 0 0 2px var(--page);z-index:3}
+.eitem:hover .ex{display:grid}   /* x sits on the corner, never under the click that opens it */
+.eph{position:absolute;top:8px;bottom:0;width:2px;margin-left:-1px;background:#FFFFFF;box-shadow:0 0 0 1px rgba(0,0,0,.4);pointer-events:none;z-index:3}
+.timeline{position:relative}
+#sndpick{position:absolute;z-index:20;width:260px;max-height:320px;overflow:auto;padding:8px;border-radius:12px;background:var(--raise);border:1px solid var(--line);box-shadow:var(--pop)}
+#sndpick h4{margin:8px 4px 2px;font-size:11px;line-height:14px;font-weight:600;color:var(--muted)}
+.timeline{position:relative}
 
 /* the panel: notes and Claude's work, the composer and the two buttons at its foot */
 aside{width:var(--sidew,320px);flex-shrink:0;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
@@ -272,6 +331,7 @@ aside{width:var(--sidew,320px);flex-shrink:0;background:var(--panel);border-left
 #list{flex:1;min-height:0;overflow:auto;padding:4px 16px 16px;display:flex;flex-direction:column;gap:8px;scrollbar-width:thin}
 .claude{display:flex;flex-direction:column;gap:12px;padding:14px;border:1px solid var(--line);border-radius:12px;flex-shrink:0}
 .claude>div{display:flex;flex-direction:column;gap:2px}
+.sesscp{align-self:flex-start;border:0;background:none;padding:0;font-size:12px;line-height:16px;color:var(--muted);text-decoration:underline;text-underline-offset:2px;cursor:pointer}.sesscp:hover{color:var(--ink)}
 .claude b{font-size:13px;line-height:16px;font-weight:600;color:var(--strong)}
 .claude p{margin:0;font-size:14px;line-height:20px;color:var(--ink)}
 .claude a{color:var(--ink);text-underline-offset:3px;text-decoration-color:var(--line2)}
@@ -372,6 +432,82 @@ aside{width:var(--sidew,320px);flex-shrink:0;background:var(--panel);border-left
 #picbtn:hover{background:var(--chip)}
 #savebtn{grid-row:2;grid-column:4;display:grid;width:28px;height:28px;border-radius:7px;background:var(--ink);color:var(--onink);place-items:center;flex-shrink:0;opacity:.25;pointer-events:none}
 #savebtn.ready{opacity:1;pointer-events:auto}
+/* the Text tool: words typed into the box go on the video, dragged into place, in TikTok's three looks */
+#tools{grid-row:2;grid-column:3;justify-self:end;display:flex;gap:2px}
+#tlayer{overflow:hidden}
+/* the Text panel: Tella's Overlay > Text, on the left beside the menu; Notes stay on the right */
+.rdiv{height:1px;align-self:stretch;margin:6px 8px;background:var(--line);flex-shrink:0}.rdiv[hidden]{display:none}
+button.ritem.rtool.on i{background:var(--railon)}button.ritem.rtool.on{color:var(--ink);font-weight:600}
+#tside{display:none;width:300px;flex-shrink:0;flex-direction:column;background:var(--panel);border-right:1px solid var(--line);overflow:hidden}
+body.tside #tside{display:flex}
+@media (max-width:1440px){body.tside .transport{gap:6px}body.tside .left{padding-left:16px;padding-right:16px}body.tside .transport .tbtn{padding:0 8px}}
+@media (max-width:1279px){body.tside .transport{flex-wrap:wrap;height:auto;row-gap:6px}}
+.tsh{display:flex;align-items:center;gap:6px;padding:16px 16px 8px}.tsh b{flex:1;font-size:15px;line-height:20px;font-weight:600;color:var(--strong)}
+.tsh button{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-size:18px;line-height:1;color:var(--body)}.tsh button[hidden]{display:none}.tsh button:hover{background:var(--hover);color:var(--ink)}
+#tbody[hidden],#cbody[hidden],#sbody[hidden]{display:none!important}
+#sbody{flex:1;min-height:0;overflow:auto;padding:4px 16px 16px;display:flex;flex-direction:column;gap:10px}
+.srow{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--line);border-radius:12px}
+.srow .sh{display:flex;align-items:flex-start;gap:10px}.srow .sh div{flex:1;min-width:0}.srow b{display:block;font-size:14px;line-height:18px;color:var(--strong)}
+.srow small{display:block;font-size:12px;line-height:16px;color:var(--muted)}
+.splay{width:32px;height:32px;border-radius:16px;flex-shrink:0;display:grid;place-items:center;background:var(--ink);color:var(--onink)}.splay:disabled{opacity:.3}
+.sopts{display:flex;flex-wrap:wrap;gap:6px}.sopts button{height:28px;max-width:100%;padding:0 10px;border-radius:8px;border:1px solid var(--line2);font-size:12px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sopts button:hover{border-color:var(--ink)}.sopts button.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}.sopts .sadd{border-style:dashed;color:var(--body)}
+.snow{margin-top:4px}.snow strong{color:var(--strong);font-weight:600}
+.slist{display:flex;flex-direction:column;gap:2px;max-height:280px;overflow:auto;margin:0 -4px;padding:4px;border-top:1px solid var(--line)}
+.slist h4{margin:8px 0 2px;font-size:11px;line-height:14px;font-weight:600;letter-spacing:.02em;color:var(--muted)}
+.sitem{display:flex;align-items:center;gap:8px;padding:3px 4px;border-radius:8px}.sitem:hover{background:var(--hover)}.sitem.on{background:var(--chip)}
+.sitem .spick{flex:1;min-width:0;text-align:left;font-size:13px;line-height:18px;color:var(--strong);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 0}
+.sitem span{font-size:11px;color:var(--muted);flex-shrink:0}.splay.sm{width:26px;height:26px;border-radius:13px}
+#cbody{flex:1;min-height:0;overflow:auto;padding:4px 16px 16px;display:flex;flex-direction:column;gap:14px}
+.clines{display:flex;flex-direction:column;gap:2px}
+.cline{display:flex;align-items:center;gap:6px;padding:2px 4px;border-radius:8px}.cline:focus-within{background:var(--chip)}
+.cline .clt{width:44px;flex-shrink:0;font-size:11px;color:var(--muted);text-align:left;font-variant-numeric:tabular-nums}.cline .clt:hover{color:var(--ink)}
+.cline input{flex:1;min-width:0;height:30px;border:1px solid transparent;border-radius:7px;background:none;padding:0 8px;font:inherit;font-size:13px;color:var(--strong);outline:none}
+.cline input:hover{border-color:var(--line)}.cline input:focus{border-color:var(--ink);background:var(--panel)}.cline.ed input{color:#E0B341}
+.cline .cx{width:22px;height:22px;border-radius:6px;flex-shrink:0;color:var(--quiet);font-size:15px;opacity:0}.cline:hover .cx,.cline:focus-within .cx{opacity:1}.cline .cx:hover{color:var(--ink);background:var(--hover)}
+.cgroup{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.cgroup button{height:36px;border-radius:8px;border:1px solid var(--line2);font-size:13px;font-weight:600;color:var(--ink)}
+.cgroup button:hover{border-color:var(--ink)}.cgroup button.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.clooks{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.clook{display:flex;flex-direction:column;gap:6px;align-items:stretch;text-align:left;font-size:12px;line-height:16px;color:var(--body);font-weight:500}
+.clook>span{height:64px;border-radius:10px;background:#3A3D44 linear-gradient(160deg,#5B6270,#2B2E35);display:grid;place-items:center;font-family:'TikTok Sans',system-ui,-apple-system,sans-serif;outline:1.5px solid transparent;outline-offset:2px;overflow:hidden;padding:0 6px}
+.clook:hover>span{outline-color:var(--line2)}.clook.on>span{outline-color:var(--ink)}.clook.on{color:var(--strong);font-weight:600}
+#tbody{flex:1;min-height:0;overflow:auto;padding:4px 16px 16px;display:flex;flex-direction:column;gap:14px}
+.ttiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.ttile{height:64px;border-radius:10px;background:#3A3D44 linear-gradient(160deg,#5B6270,#2B2E35);display:grid;place-items:center;font-family:'TikTok Sans',system-ui,-apple-system,sans-serif;font-weight:700;font-size:15px;outline:1.5px solid transparent;outline-offset:2px}
+.ttile:hover{outline-color:var(--line2)}.ttile.on{outline-color:var(--ink)}
+.tcap{display:flex;justify-content:space-between;font-size:12px;line-height:16px;color:var(--muted)}
+.ttime{display:flex;align-items:center;gap:6px;font-size:13px;line-height:16px;color:var(--strong)}.ttime b{flex:1;font-weight:600}
+.ttime button{height:28px;padding:0 9px;border-radius:8px;border:1px solid var(--line2);font-size:12px;font-weight:600;color:var(--ink)}.ttime button:hover{border-color:var(--ink)}
+.tnew #tdel{color:var(--flag);margin-right:auto;padding:0}
+@media (max-width:760px){#tside{width:auto;border-right:0;border-bottom:1px solid var(--line)}body.tside main{flex-direction:column}}
+.tsub{margin:0;color:var(--muted);font-size:13px;line-height:18px}
+.tnew{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--line);border-radius:12px}
+.tnew b{font-size:13px;line-height:16px;color:var(--strong)}
+.tnew input{height:36px;border:1px solid var(--line2);border-radius:8px;background:var(--panel);padding:0 10px;font:inherit;font-size:14px;color:var(--strong);outline:none}.tnew input:focus{border-color:var(--ink)}
+.tnew .row{display:flex;gap:8px;align-items:center}.tnew .row span{flex:1;font-size:12px;line-height:16px;color:var(--muted)}
+.tnew button{height:32px;padding:0 12px;border-radius:8px;font-size:13px;font-weight:600}.tnew #tadd{background:var(--ink);color:var(--onink)}.tnew #tadd:disabled{opacity:.4}.tnew #tcancel{color:var(--body)}
+.tlist{display:flex;flex-direction:column;gap:6px}.tlist h4{margin:8px 0 2px;font-size:12px;line-height:16px;font-weight:600;color:var(--muted)}
+.titem{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;cursor:pointer}.titem:hover{border-color:var(--line2)}.titem.on{border-color:var(--ink)}
+.titem>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.titem b{font-size:14px;line-height:18px;color:var(--strong);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.titem span{font-size:12px;line-height:16px;color:var(--muted)}
+.titem button{height:28px;padding:0 10px;border-radius:8px;border:1px solid var(--line2);font-size:12px;font-weight:600;color:var(--ink);flex-shrink:0}.titem button:hover{border-color:var(--ink)}
+.tl{position:absolute;transform:translate(-50%,-50%);width:84%;text-align:center;font-family:'TikTok Sans',system-ui,-apple-system,sans-serif;font-weight:700;line-height:1.15;white-space:pre-wrap;overflow-wrap:anywhere}
+.csel{position:absolute;pointer-events:auto;cursor:move;touch-action:none;outline:2px solid #FFFFFF;box-shadow:0 0 0 1px rgba(0,0,0,.55),inset 0 0 0 1px rgba(0,0,0,.35)}
+.csel img{width:100%;height:100%;object-fit:contain;display:block;pointer-events:none}
+.csel i{position:absolute;width:12px;height:12px;margin:-6px;border-radius:3px;background:#FFFFFF;border:1px solid #0C0A09}
+.csel [data-h=nw]{left:0;top:0;cursor:nwse-resize}.csel [data-h=ne]{right:0;top:0;cursor:nesw-resize}.csel [data-h=sw]{left:0;bottom:0;cursor:nesw-resize}.csel [data-h=se]{right:0;bottom:0;cursor:nwse-resize}
+.cwas{position:absolute;pointer-events:none;outline:1px dashed rgba(255,255,255,.75);background:rgba(12,10,9,.55);display:grid;place-items:center}
+.cwas span{font-size:11px;line-height:14px;color:#FFFFFF;background:rgba(12,10,9,.7);padding:2px 6px;border-radius:5px;white-space:nowrap;max-width:calc(100% - 8px);overflow:hidden;text-overflow:ellipsis}
+.cbar{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);pointer-events:auto;display:flex;gap:2px;padding:3px;border-radius:10px;background:var(--pill);box-shadow:var(--pop);white-space:nowrap;max-width:calc(100% - 12px)}
+#clayer,#hits,#tlayer{-webkit-user-select:none;user-select:none}
+.cnew{position:absolute;pointer-events:none;outline:1px dashed rgba(255,255,255,.8)}.cnew img{width:100%;height:100%;object-fit:contain;display:block}
+.cbar button{height:26px;padding:0 8px;border-radius:7px;font-size:12px;line-height:26px;font-weight:600;color:var(--pilltx)}.cbar button:hover{background:rgba(255,255,255,.12)}
+.cbar button.go{background:#FFFFFF;color:#0C0A09}.cbar button:disabled{opacity:.4}
+.tl[data-tclick]{pointer-events:auto;cursor:pointer}.tl[data-tclick]:hover{outline:1px dashed rgba(255,255,255,.8);outline-offset:4px}
+#tprev{pointer-events:auto;cursor:move;touch-action:none;outline:1px dashed rgba(255,255,255,.8);outline-offset:4px}
+.ts-plain,.ts-outline{color:#FFFFFF}.ts-outline{-webkit-text-stroke:.14em #000;paint-order:stroke fill}
+.ts-box{color:#000000;background:#FFFFFF;padding:.06em .24em;border-radius:.18em;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+.tl:has(.ts-box){line-height:1.32}
 #pics{grid-row:3;grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;padding:2px}#pics:empty{display:none}
 #pics span{position:relative}#pics img{height:52px;border-radius:8px;border:1px solid var(--line);display:block}
 #pics button{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--ink);color:var(--onink);font-size:12px;line-height:20px}
@@ -405,6 +541,29 @@ body.staged #stagebar{display:flex}
 .learn b{font-size:14px;line-height:18px;font-weight:600;color:var(--strong)}
 .learn p{margin:0;font-size:13px;line-height:18px;color:var(--body)}
 .learn p.wait{display:flex;align-items:center;gap:8px}.learn p.wait i{width:7px;height:7px;border-radius:4px;background:var(--ink);animation:pulse 1.2s ease-in-out infinite}
+.learn .lsave{display:flex;flex-direction:column;gap:8px}
+.learn .lsave>span{font-size:12px;line-height:16px;color:var(--quiet)}
+.ldd{display:flex;align-items:center;gap:10px;width:100%;height:44px;padding:0 12px;border:1px solid var(--line2);border-radius:10px;background:var(--panel);color:var(--strong);text-align:left;font:inherit;cursor:pointer}
+.ldd:hover{border-color:var(--quiet)}
+.ldd .nm{flex:1;min-width:0;font-size:14px;line-height:18px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ldd .sub{font-size:12px;color:var(--quiet);white-space:nowrap;flex-shrink:0}
+.ldd svg{flex-shrink:0;color:var(--quiet)}
+.lmenu{max-height:320px;overflow:auto;padding:6px;border:1px solid var(--line2);border-radius:12px;background:var(--raise);box-shadow:0 12px 32px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:2px}
+.lmenu button{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:6px 10px;border:0;border-radius:8px;background:none;color:var(--strong);text-align:left;font:inherit;cursor:pointer}
+.lmenu button:hover,.lmenu button.cur{background:var(--hover)}
+.lmenu .t{flex:1;min-width:0;display:flex;flex-direction:column}
+.lmenu .t b{font-size:14px;line-height:18px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lmenu .t i{font-style:normal;font-size:12px;line-height:16px;color:var(--quiet)}
+.lmenu .ck{width:16px;flex-shrink:0;display:grid;place-items:center}
+.lmenu hr{border:0;border-top:1px solid var(--line);margin:4px 2px}
+.lname{height:44px;border:1px solid var(--line2);border-radius:10px;background:var(--panel);padding:0 12px;font:inherit;font-size:14px;color:var(--strong);outline:none;width:100%}
+.lname:focus{border-color:var(--ink)}
+.lact{display:flex;flex-direction:column;gap:6px}
+.learn .lact .go{width:100%;height:44px;border-radius:10px;border:1px solid var(--ink);background:var(--ink);color:var(--onink);font:inherit;font-size:14px;font-weight:600;padding:0 14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.learn .lact .go:disabled{opacity:.45}
+.learn .lact .skip{height:32px;border:0;background:none;color:var(--quiet);font:inherit;font-size:13px;font-weight:500;cursor:pointer}
+.learn .lact .skip:hover{color:var(--strong)}
+.learn .lerr{font-size:12px;line-height:16px;color:var(--quiet)}
 .learn p.ok{display:flex;align-items:center;gap:8px;color:var(--strong);font-weight:600}.learn p.ok svg{color:var(--ok);flex-shrink:0}
 .lrules{display:flex;flex-direction:column;gap:10px}
 .lrule{display:flex;align-items:flex-start;gap:10px;font-size:13px;line-height:18px;color:var(--strong);cursor:pointer}
@@ -447,6 +606,9 @@ body.trtab #box,body.trtab #adds{display:none}body.trtab .pfoot{padding-top:0;bo
 .tradd{align-self:flex-start;margin-left:28px;padding:0;border:0;background:none;font-size:13px;line-height:16px;font-weight:600;color:var(--body)}
 .tradd:hover{color:var(--strong)}
 .trq{align-self:flex-end;max-width:85%;padding:10px 12px;border-radius:12px;background:var(--raise);font-size:14px;line-height:20px;color:var(--strong)}
+.trq small{display:block;font-size:12px;line-height:16px;color:var(--muted);margin-bottom:2px}
+.trforl{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.trfor{height:28px;border:1px solid var(--line2);border-radius:8px;background:var(--panel);color:var(--strong);font:inherit;font-size:13px;padding:0 8px}
 .trwait{display:flex;align-items:center;gap:8px;margin:0;font-size:13px;line-height:18px;color:var(--body)}.trwait i{width:7px;height:7px;border-radius:4px;background:var(--ink);animation:pulse 1.2s ease-in-out infinite}
 .trrows{display:flex;flex-direction:column}
 .trr{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px;line-height:18px;color:var(--strong)}
@@ -509,6 +671,7 @@ body.making #making{display:flex}
   .grow{justify-content:flex-end}
   .timeline{padding:10px 16px 12px;gap:6px}
   #ticks{display:none}
+  #tzr{display:none}
   .timeline.tracked .mini{margin-top:4px}
   aside{width:auto;flex:1;min-height:0;border:0;border-top:1px solid var(--line);border-radius:16px 16px 0 0;padding-top:8px}
   aside::before{content:'';display:block;width:36px;height:4px;border-radius:2px;background:var(--line);margin:0 auto}
@@ -534,9 +697,13 @@ body.making #making{display:flex}
  <a class="ritem on" data-home data-view="videos" href="#" aria-current="page"><i><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M10 9.2v5.6l4.6-2.8z"/></svg></i>Videos</a>
  <a class="ritem" data-home data-view="mystyle" href="#"><i><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M12 3 3 8l9 5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></i>Styles</a>
  <a class="ritem" data-home data-view="skills" href="#"><i><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M13 3 5 13.5h6l-1 7.5 8-10.5h-6z"/></svg></i>Skills</a>
+ <div class="rdiv" id="railtools" hidden></div>
+ <button class="ritem rtool" id="railtext" type="button" hidden title="Text on the video"><i><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg></i>Text</button>
+ <button class="ritem rtool" id="railcap" type="button" hidden title="Captions: words at a time and the look"><i><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M7 15h4M13 15h4M7 11h10"/></svg></i>Captions</button>
+ <button class="ritem rtool" id="railsnd" type="button" hidden title="Sounds: pick which sound plays where"><i><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6L8 10z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a7.5 7.5 0 0 1 0 11"/></svg></i>Sounds</button>
  <div class="rflex"></div>
  <a class="ritem rjob" id="railjobs" data-home data-view="videos" href="#" hidden><i><span id="jobn">0</span><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="var(--line)" stroke-width="2.5"/><path d="M12 2a10 10 0 0 1 9.5 13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></i>Making</a>
- <button class="ritem rupd" id="railupd" type="button" hidden><i><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg></i><span id="railupdt">Update</span></button>
+ <button class="ritem" id="railupd" type="button"><i><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg></i><span id="railupdt">Update</span></button>
  <a class="ritem" data-home data-view="settings" href="#"><i><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg></i>Settings</a>
  <button class="themebtn"></button>
 </nav>
@@ -544,7 +711,7 @@ body.making #making{display:flex}
 <header>
  <div class="brand"><button id="homebtn" class="homebtn" title="Back to your videos"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Your videos</button><span class="sl">/</span><span id="name"></span><span id="homemsg" class="homemsg" hidden></span></div>
  <div class="seg" id="stages"><button id="st1" data-go="cut"></button><svg class="chev" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><button id="st2" data-go="edit"></button></div>
- <div class="status" id="statusbox"><i></i><span id="listen"></span><button id="howbtn" aria-label="how this works and shortcuts" title="how this works (?)"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="10" cy="10" r="8.3"/><path d="M7.7 7.6a2.4 2.4 0 1 1 3.3 2.2c-.6.3-1 .8-1 1.5v.4"/><circle cx="10" cy="14.4" r=".4" fill="currentColor"/></svg></button></div>
+ <div class="status" id="statusbox"><i></i><span id="listen"></span><span class="clc" id="clc" hidden><i></i><span id="clct"></span><button id="clcbtn"></button></span><button id="howbtn" aria-label="how this works and shortcuts" title="how this works (?)"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="10" cy="10" r="8.3"/><path d="M7.7 7.6a2.4 2.4 0 1 1 3.3 2.2c-.6.3-1 .8-1 1.5v.4"/><circle cx="10" cy="14.4" r=".4" fill="currentColor"/></svg></button></div>
  <div class="mhead"><b id="mstage"></b><span id="msub"></span></div><button class="themebtn mtheme"></button><button id="mapprove"></button>
 </header>
 <section id="how" aria-label="how this works"><ol>
@@ -554,6 +721,7 @@ body.making #making{display:flex}
 </ol><div id="keys"></div></section>
 
 <main>
+<section id="tside" aria-label="Text"><div class="tsh"><b id="tsht">Text</b><button id="tplus" title="Add text (the default look)" aria-label="add text">+</button><button id="tclose" title="Close" aria-label="close the text panel">×</button></div><div id="tbody"></div><div id="cbody" hidden></div><div id="sbody" hidden></div></section><input type="file" id="sndfile" accept="audio/*,.wav,.mp3,.m4a,.aac,.flac,.ogg,.opus" hidden>
 <div class="left">
  <div class="stagewrap">
  <div id="stagebar" role="status"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="4" cy="4.5" r="2.2"/><circle cx="4" cy="11.5" r="2.2"/><path d="M5.8 5.6L14 11.5M5.8 10.4L14 4.5"/></svg><span id="stagetext"></span></div>
@@ -564,7 +732,8 @@ body.making #making{display:flex}
   <div id="pair">
    <figure class="pl" id="p2"><figcaption id="cap2"></figcaption><div class="player"><video id="v2" preload="auto" muted playsinline></video><div class="sz"><i class="zt"></i><i class="zb"></i><i class="zl"></i><i class="zr"></i><b></b></div></div></figure>
    <figure class="pl" id="p1"><figcaption id="cap1"></figcaption><div class="player"><video id="v" preload="auto" playsinline></video>
-    <div class="hits" id="hits"></div><div id="oldbadge"></div><div id="making" aria-live="polite"></div><div class="sz"><i class="zt"></i><i class="zb"></i><i class="zl"></i><i class="zr"></i><b></b></div></div></figure>
+    <div class="hits" id="hits"></div><div class="hits" id="tlayer"></div><div class="hits" id="clayer"></div><div id="oldbadge"></div><div id="making" aria-live="polite"></div>
+    <div class="fsbar" id="fsbar"><div class="fsscrub" id="fsscrub"><i id="fsfill"></i><b id="fsknob"></b><span id="fshover"></span></div><div class="fsrow"><button id="fsplay" aria-label="play or pause"></button><button id="fsback" title="j">-5s</button><button id="fsfwd" title="l">+5s</button><span id="fstime" class="num"></span><span class="grow"></span><button id="fsexit" title="esc">Exit full screen</button></div></div><div class="sz"><i class="zt"></i><i class="zb"></i><i class="zl"></i><i class="zr"></i><b></b></div></div></figure>
   </div>
   <div class="rsz" id="rsztx" role="separator" aria-label="drag to resize the video and the transcript" title="drag to resize"></div>
   <div id="tx"><div class="txhead"><b>Transcript</b><span id="txmeta"></span></div><div id="txlines"></div><div class="txtools" id="txtools"></div><div id="txbar" role="toolbar" aria-label="change the selected words"></div></div>
@@ -581,11 +750,15 @@ body.making #making{display:flex}
   <button class="tbtn" id="full" title="f">Full screen</button>
  </div>
  <div class="timeline" id="timeline">
+  <div class="tzoom" role="group" aria-label="timeline zoom"><button data-tz="-" title="Zoom out (⌘-)" aria-label="zoom out">−</button><input type="range" id="tzr" min="0" max="100" step="any" value="0" aria-label="timeline zoom"><button data-tz="+" title="Zoom in (⌘=)" aria-label="zoom in">+</button><button data-tz="fit" class="tfit" title="Show the whole video (shift z)">Fit</button></div>
+  <div id="tscroll"><div id="tinner">
   <div class="trow"><span class="tl"></span><div id="pins"></div></div>
   <div class="trow"><span class="tl"></span><div id="bar"><div id="segs"></div><div id="knob"></div><div id="hover"></div></div></div>
   <div class="trow"><span class="tl"></span><div id="ticks" class="num"></div></div>
   <div class="trow"><div class="mini" id="mini"></div></div>
   <div id="tracks"></div>
+  </div></div>
+  <div id="edtracks"></div><div id="sndpick" hidden></div>
  </div>
 </div>
 <div class="rsz" id="rszside" role="separator" aria-orientation="vertical" aria-label="drag to resize the notes panel" title="drag to resize"></div>
@@ -594,12 +767,12 @@ body.making #making{display:flex}
  <div class="mhead2"><div><b>Notes</b><span id="mcount"></span></div><button id="msend"></button></div>
  <div id="list"></div>
  <div class="pfoot">
-  <div id="adds"></div><input type="file" id="addfile" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+  <div id="adds"></div><input type="file" id="addfile" accept="video/mp4,video/quicktime,video/webm,.m4v,image/png,image/jpeg,image/gif,image/webp" multiple hidden>
   <div id="box"><textarea id="ta" rows="1" aria-label="note"></textarea><div id="pics"></div>
    <input type="file" id="picin" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
    <input type="file" id="editpic" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
    <div class="crow"><button id="clock" title="the note is saved at the playhead. i and o mark a range; click to clear it."><svg width="13" height="13" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.8" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M7 4v3.2l2 1.3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span id="boxat" class="num">0:00.0</span></button>
-    <button id="picbtn" aria-label="attach an image" title="attach an image (or paste or drop one)"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M13 7.5l-5.3 5.3a3.2 3.2 0 01-4.5-4.5l5.6-5.6a2.1 2.1 0 013 3l-5.5 5.5a1 1 0 01-1.5-1.5L9.9 4.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
+    <span id="tools"><button id="picbtn" aria-label="attach an image" title="attach an image (or paste or drop one)"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M13 7.5l-5.3 5.3a3.2 3.2 0 01-4.5-4.5l5.6-5.6a2.1 2.1 0 013 3l-5.5 5.5a1 1 0 01-1.5-1.5L9.9 4.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button></span>
     <select id="scope" aria-label="which videos the note is for"></select>
     <button id="savebtn" aria-label="save note" title="save note (enter)"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 12V2M3 6l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div></div>
   <div class="actions"><a id="dl" href="/download" download hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg>Download</a><button id="send"><i></i><span></span></button><button id="approve"></button></div>
@@ -613,7 +786,7 @@ let themeAt=0;   // a poll already in flight still carries the old theme: ignore
 const $=id=>document.getElementById(id),v=$('v'),v2=$('v2'),bar=$('bar'),ta=$('ta'),box=$('box');
 const SPEEDS=[0.5,1,1.25,1.5,2],FPS=30,STAGE={cut:'The cut',edit:'The edit'};
 const KEYS=[['Play or pause','space'],['Back or forward 5 s','j l'],['Back or forward 1 s','← →'],['One frame',', .'],['Slower or faster','[ ]'],
- ['Write a note','c'],['Mark a range','i o'],['Save note','enter'],['Cancel','esc'],['Full screen','f'],['Mute','m'],['Safe zone (vertical)','z'],['This help','?']];
+ ['Write a note','c'],['Mark a range','i o'],['Save note','enter'],['Cancel','esc'],['Full screen','f'],['Zoom the timeline','⌘= ⌘-'],['Fit the timeline','shift z'],['Mute','m'],['Safe zone (vertical)','z'],['This help','?']];
 $('keys').innerHTML=KEYS.map(([a,k])=>`<div><span>${a}</span><span>${k.split(' ').map(x=>'<kbd>'+x+'</kbd>').join('&nbsp;&nbsp;')}</span></div>`).join('');
 const TICK='<svg width="12" height="12" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const SPIN='<svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="var(--line)" stroke-width="3"/><path d="M12 3a9 9 0 0 1 9 9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>';
@@ -666,15 +839,43 @@ document.getElementById('homebtn').onclick=()=>{
 function renderRail(){
   document.body.classList.toggle('nohome',!S.home);
   document.querySelectorAll('.rail [data-view]').forEach(a=>{a.href=S.home?S.home+'#'+a.dataset.view:'#'});
-  const u=S.update,ub=$('railupd');ub.hidden=!u;
-  if(u&&u.busy)updWas=true;if(u&&updWas&&!u.busy)updating=updWas=false;   // the update ended (done: this page restarts on it)
-  if(u){ub.disabled=!!u.busy||updating;$('railupdt').textContent=u.busy||updating?'Updating':u.error?'Try again':'Update';ub.title=u.busy||updating?'Installing the new version. This page restarts on it.':u.error||'Install cooked. '+(u.latest||'')}
+  // Updates: always in the rail. Update to <version> when one is out (the window installs it), else Check for updates
+  const u=S.update||{},ub=$('railupd'),inst=u.newer||u.busy||u.error||updating;
+  if(u.busy)updWas=true;if(updWas&&!u.busy)updating=updWas=false;   // the update ended (done: this page restarts on it)
+  ub.classList.toggle('rupd',!!inst);ub.disabled=!!u.busy||updating||checking||!!u.checking;
+  $('railupdt').textContent=u.busy||updating?'Updating':u.error?'Try again':u.newer?'Update to '+(u.latest||'new'):checking||u.checking?'Checking...':'Check for updates';
+  ub.title=u.busy||updating?'Installing the new version. This page restarts on it.':u.error||(u.newer?'Install cooked. '+(u.latest||''):'Ask GitHub for a new version'+(u.installed?'. You have '+u.installed:''));
   const n=S.home?S.jobs||0:0;$('railjobs').hidden=!n;$('jobn').textContent=n;$('railjobs').title=n?'Making '+plural(n,'video'):'';
 }
-let updating=false,updWas=false;
-$('railupd').onclick=async()=>{updating=true;renderRail();setTimeout(()=>{updating=false;if(S)renderRail()},15000);try{const r=await fetch('/update',{method:'POST',body:'{}'});if(!r.ok){updating=false;alert('The window is not open, so it cannot update. Open cooked. and press Update in Settings.')}}catch(e){updating=false}renderRail()};
+let updating=false,updWas=false,checking=false;
+// the window closed: the rail still shows, and a click starts the window's page (POST /home) and goes there
+document.querySelector('.rail').addEventListener('click',async e=>{const a=e.target.closest('[data-home]');if(!a||(S&&S.home))return;e.preventDefault();
+  if(a.dataset.busy)return;a.dataset.busy='1';toast('Opening your videos...');
+  try{const r=await fetch('/home',{method:'POST',body:'{}'}),j=await r.json();if(j.url)location.href=j.url+'#'+a.dataset.view;else alert(j.error||'The editor did not open.')}
+  finally{delete a.dataset.busy}});
+$('railupd').onclick=async()=>{const u=(S&&S.update)||{};
+  if(!(u.newer||u.error)){   // Check for updates: the window asks GitHub; the item turns into Update to <version>, or says you are up to date
+    checking=true;renderRail();try{const r=await fetch('/update/check',{method:'POST',body:'{}'});if(!r.ok)toast((await r.json().catch(()=>({}))).error||'Could not check')
+      else for(let i=0;i<24;i++){await new Promise(r=>setTimeout(r,500));await load(true);if(!(S.update||{}).checking&&i>1)break}}
+    finally{checking=false;renderRail()}
+    const v=S.update||{};if(!v.newer&&v.latest)toast('Up to date. You have '+(v.installed||v.latest)+'.');return}
+  updating=true;renderRail();setTimeout(()=>{updating=false;if(S)renderRail()},15000);try{const r=await fetch('/update',{method:'POST',body:'{}'});if(!r.ok){updating=false;alert('The window is not open, so it cannot update. Open cooked. and press Update in Settings.')}}catch(e){updating=false}renderRail()};
 let railx=false;try{railx=localStorage.getItem('review-railx')==='1'}catch(e){}
 document.body.classList.toggle('railx',railx);
+// the Claude control: Show Claude brings its Terminal tab to the front; Start Claude carries on in the Claude that worked
+// here (typed into it, or its conversation opened again), else a new one. Where no terminal opens, the command is copied.
+const CLC={working:'Claude is working on your notes',waiting:'Claude is waiting for your notes',open:'Claude is open',off:'Claude isn\u2019t running for this video'};
+function renderClaude(asking){
+  const c=S.claude_ui||{},st=c.state==='off'&&alive(S)?'working':c.state||'off',el=$('clc'),b=$('clcbtn'),start=st==='off';
+  el.hidden=asking||!!S.raw&&!c.last;el.className='clc '+st;$('clct').textContent=CLC[st];
+  b.textContent=start?'Start Claude':'Show Claude';b.className=start?'go':'';b.hidden=!start&&!c.show;b.dataset.act=start?'start':'show';
+}
+$('clcbtn').onclick=async()=>{const b=$('clcbtn');b.disabled=true;
+  try{if(b.dataset.act==='show'){const r=await post('/claude/show',{});if(!r.shown)toast('Its Terminal window was not found. Start Claude opens it again.')}
+    else{const r=await post('/claude',{});if(r.opened)toast(r.how==='typed'?'Sent to the Claude open in Terminal':'Claude is opening in Terminal');
+      else if(r.command){try{await navigator.clipboard.writeText(r.command);toast('Terminal did not open. The command is copied: paste it into a terminal.')}catch(x){toast('Run this in a terminal: '+r.command)}}
+      else if(!r.how)toast('Claude is already on this video.')}}
+  finally{b.disabled=false;await load(true)}};
 $('railtog').onclick=()=>{railx=!railx;document.body.classList.toggle('railx',railx);try{localStorage.setItem('review-railx',railx?'1':'0')}catch(e){}
   $('railtog').title=$('railtog').ariaLabel=railx?'Collapse the sidebar':'Expand the sidebar'};
 let PV=null,followNew=false;   // followNew: Go back was pressed, so show the round it opens wherever the page was
@@ -690,6 +891,7 @@ async function load(force){
   if((d.theme==='light'||d.theme==='dark')&&document.documentElement.dataset.theme!==d.theme&&Date.now()-themeAt>3000){document.documentElement.dataset.theme=d.theme;themeIcon()}   // one theme with the window
   if(!view||followNew&&was!==key(cur())||(was&&was!==key(cur())&&key(view)===was)){if(view&&was&&was!==key(cur())&&v.currentTime>0)seekTo=mapT(v.currentTime,key(view),key(cur()));   // the new draft opens where you were, not at 0
     view=cur();followNew=false;if(was&&was!==key(cur()))tab='notes'}   // follow a new round when it lands
+  if(S.baked&&S.baked!==DATA._baked){DATA._baked=S.baked;delete DATA[key(S)]}   // a bake remade this round's data (cards moved)
   for(const r of S.rounds||[])if(!(key(r) in DATA)){DATA[key(r)]=null;fetch('/data?k='+key(r)).then(x=>x.json()).then(j=>{DATA[key(r)]=j;txSig='';render()}).catch(()=>{})}
   setVideo();render();
   if(landing===2){landing=0;toast(S.stills?'The preview is ready':'The edit is ready')}
@@ -721,6 +923,7 @@ $('dl').addEventListener('click',async e=>{
       if(i===1)toast('Saving the video. It downloads in a moment.');await new Promise(r=>setTimeout(r,1000))}
     toast('The video did not download. Try again.')}finally{delete a.dataset.busy}
 });
+const sessBtn=()=>'';   // Copy session moved into the Claude control (Show Claude / Start Claude)
 function toast(t){const e=$('toast');e.innerHTML=TICK+esc(t);e.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(()=>e.classList.remove('show'),3500)}
 function cmpOptions(){   // what can play beside this round: its other versions, then earlier rounds of this stage
   const r=viewRound(),o=['',...(r.alts||[]).map(a=>a.name)].filter(x=>x!==alt).map(x=>({k:key(view),alt:x,label:lab(x)}));
@@ -732,8 +935,8 @@ function setVideo(){
   if(previewOn&&!canPreview())previewOn=false;
   if(previewOn){mode='watch'}
   document.body.classList.toggle('preview',previewOn);
-  const k=previewOn?'raw':key(view)+'|'+alt;if(k!==loaded){const t=seekTo??(loaded.split('|')[0]===key(view)?v.currentTime:0);seekTo=null;loaded=k;
-    v.src=previewOn?'/video?k=raw':'/video?k='+key(view)+'&alt='+encodeURIComponent(alt);v.playbackRate=speed;if(t)v.addEventListener('loadedmetadata',()=>v.currentTime=Math.min(t,v.duration||t),{once:true})}
+  const k=previewOn?'raw':key(view)+'|'+alt+'|'+(S.baked||0);if(k!==loaded){const t=seekTo??(loaded.split('|')[0]===key(view)?v.currentTime:0);seekTo=null;loaded=k;
+    v.src=previewOn?'/video?k=raw':'/video?k='+key(view)+'&alt='+encodeURIComponent(alt)+'&b='+(S.baked||0);v.playbackRate=speed;if(t)v.addEventListener('loadedmetadata',()=>v.currentTime=Math.min(t,v.duration||t),{once:true})}
   const opts=cmpOptions();
   if(mode==='compare'&&!opts.length)mode='watch';
   if(mode==='compare'&&(!cmp||!opts.some(o=>o.k===cmp.k&&o.alt===cmp.alt)))cmp=opts.find(o=>o.k!==key(view))||opts[0];
@@ -785,25 +988,29 @@ function steps(){
     $(id).disabled=!has(st);
   });
 }
+// the new Claude review.py opened for this edit in the last 15 min (Submit with no Claude on it, or Open a new Claude)
+const newClaude=S=>!S.listening&&S.claude&&Date.now()/1000-S.claude.at<900?(S.claude.opened?{typed:'Your notes went to the Claude already open in Terminal',resumed:'The Claude that worked on this opens again in Terminal'}[S.claude.how]||'A new Claude is starting in its own Terminal window':'Run this in a terminal to start Claude: '+S.claude.command):'';
 function listenText(S){
   const e=S.events[S.events.length-1],picked=!!(S.sent&&e&&e.handled);
   if(picked&&e.type==='approve')return e.stills?'Claude is making the video':e.stage==='cut'?(S.stage==='cut'&&!S.final?'Claude is making the edit':'The cut is approved'):'Approved';
+  if(picked&&!alive(S))return newClaude(S)||'Claude stopped. Your notes are saved.';
   if(picked)return S.raw?(S.cut_steps&&S.cut_steps.state==='queued'?((S.cut_steps.claude||{}).opened?'Claude is working in its own Terminal window':'Waiting for Claude'):'Claude is making the cut'):e.type==='edits'?'Claude is applying your changes':'Claude is working on the next draft';
+  if(S.sent&&newClaude(S))return newClaude(S);
   if(S.sent)return e&&e.type==='edits'?'Changes sent':e&&e.type==='approve'?(e.stills?'Preview approved':e.stage==='cut'?'Cut approved':'Approved'):'Notes sent';
   const first=!(S.rounds||[]).some(r=>r.stage===S.stage&&r.round>=1&&r.round<S.round&&!r.stills);   // the first video of the cut or the edit (the stills before it are not one)
-  if(S.listening)return S.round>1&&!S.comments.some(c=>c.stage===S.stage&&c.round===S.round)?(first?(S.stage==='edit'?(S.stills?'The preview is ready':'The edit is ready'):'The cut is ready'):cap(dn(S))+' is ready'):'Claude is listening';
-  if(S.busy)return 'Claude is working. Notes you send now are next.';
-  return 'Claude is not listening. Notes still save.';
+  if(S.listening)return S.round>1&&!S.comments.some(c=>c.stage===S.stage&&c.round===S.round)?(first?(S.stage==='edit'?(S.stills?'The preview is ready':'The edit is ready'):'The cut is ready'):cap(dn(S))+' is ready'):'';   // waiting for notes: the Claude control says it
+  return '';   // working, waiting or not running: the Claude control says it (submitting with none starts one)
 }
 function render(){
   if(!S)return;
   document.body.classList.toggle('vertical',!!S.vertical);renderRail();
   const p=pending(),lastEv=S.events[S.events.length-1],picked=!!(S.sent&&lastEv&&lastEv.handled),vr=viewRound();
   $('name').textContent=S.name;$('name').title=S.name;document.title=S.name+(p==='send'?' · Claude working':' · '+dn(S));steps();
-  const idleEdit=makingEdit()&&makeState().idle,busyNow=!idleEdit&&(picked&&(p==='send'||!!S.raw)||makingEdit()||approving);
+  const idleEdit=makingEdit()&&makeState().idle,busyNow=!idleEdit&&(picked&&alive(S)&&(p==='send'||!!S.raw)||makingEdit()||approving);
   const nowAct=busyNow&&(S.activity||[]).filter(x=>x.round===S.round&&!x.done).pop();
   const asking=!!document.documentElement.dataset.ask;   // ask.js: Claude's question box is open on this page
   $('listen').innerHTML=asking?'<b>Claude is asking you something</b>':esc(approving?(S.stills?'Preview approved':'Cut approved'):idleEdit?'Claude is not working on the edit':listenText(S))+(!asking&&nowAct&&nowAct.text?` <span class="stp">· ${esc(nowAct.text)}</span>`:'');
+  renderClaude(asking);
   $('statusbox').classList.toggle('work',busyNow&&!asking);$('statusbox').querySelector('i').innerHTML=busyNow&&!asking?SPIN:'';
   $('mstage').textContent=STAGE[view.stage];$('msub').textContent=S.name+' · '+rn(view).toLowerCase();
   const mine=S.comments.filter(c=>c.stage===S.stage&&c.round===S.round).length,live=isCur()&&!p;
@@ -845,12 +1052,12 @@ function render(){
   meta();
   $('oldbadge').style.display=isCur()&&!previewOn?'none':'block';$('oldbadge').textContent=previewOn?'Playing your changes':'Older draft, read only';
   // the composer: open until approve. While Claude works, a note waits for the next round
-  const canNote=noteOk();
+  const onTr=onTrial(),canNote=noteOk()||onTr;
   ta.disabled=!canNote;box.classList.toggle('off',!canNote);
-  ta.placeholder=previewOn?'Back to the cut to leave a note':p==='send'?(S.raw?'Note for the cut...':'Note for the next draft...'):!isCur()?'Older draft, read only':p==='approve'?(S.stills?'The preview is approved':S.stage==='cut'&&!S.final?'The cut is approved':'Approved'):view.round>1?'Feedback on '+dn(viewRound())+' at this moment...':'Type feedback for this moment...';
-  const sc=$('scope');sc.style.display=nv&&canNote?'block':'none';
+  ta.placeholder=onTr?`Note on ${alt} at this moment...`:previewOn?'Back to the cut to leave a note':p==='send'?(S.raw?'Note for the cut...':'Note for the next draft...'):!isCur()?'Older draft, read only':p==='approve'?(S.stills?'The preview is approved':S.stage==='cut'&&!S.final?'The cut is approved':'Approved'):view.round>1?'Feedback on '+dn(viewRound())+' at this moment...':'Type feedback for this moment...';
+  const sc=$('scope');sc.style.display=nv&&canNote&&!onTr?'block':'none';
   if(nv)sc.innerHTML=`<option value="">${esc(lab(alt))} only</option><option value="*">${nv===1?'Both':'All'} versions</option>`;
-  renderVer();renderTx();renderBar();renderTracks();renderList();renderAdds();boxTime();hitSig='~';renderHits();
+  renderVer();renderTx();renderBar();renderTracks();renderEdTracks();renderList();renderAdds();boxTime();hitSig='~';renderHits();if(!csel)drawPending();
 }
 const noteOk=()=>!!S&&isCur()&&pending()!=='approve'&&!previewOn;   // the composer is open (while Claude works a note waits)
 function meta(){   // "Round 1 · 31s ago", ticked every few seconds so the age stays true
@@ -879,12 +1086,88 @@ function renderBar(){
     +(inT!==null?'<div class="range" id="rng"></div>':'');
   const d=data();
   if(d.chapters)$('ticks').innerHTML=d.chapters.map((c,i)=>{const e=(d.chapters[i+1]||[T])[0];return `<span data-s="${c[0]}" style="left:${c[0]/T*100}%;width:calc(${(e-c[0])/T*100}% - 6px)">${esc(c[1])}</span>`}).join('');
-  else{const step=T<=120?15:T<=300?30:T<=900?60:300,ts=[];for(let t=0;t<T-step*.45;t+=step)ts.push(t);
-    $('ticks').innerHTML=ts.map(t=>`<span style="left:${t/T*100}%">${fmt(t)}</span>`).join('')+`<span class="end">${fmt(T)}</span>`}
+  else{const step=tstep(T/zm,8),ts=[];for(let t=0;t<T-step*.45;t+=step)ts.push(t);   // about 8 times across what is in view
+    $('ticks').innerHTML=ts.map(t=>`<span style="left:${t/T*100}%">${step<1?fmtx(t):fmt(t)}</span>`).join('')+`<span class="end">${fmt(T)}</span>`}
   $('pins').innerHTML=shown().map((c,i)=>{const old=c.round!==view.round;
     return `<button class="pin${old?(c.status==='fixed'?' fixed':' todo'):''}" data-pt="${here(c)}" data-old="${old?1:0}" style="left:${Math.min(98.5,Math.max(1.5,here(c)/T*100))}%" title="${esc(fmt(here(c))+'  '+c.text)}">${i+1}</button>`}).join('');
   tick();
 }
+// the timeline's zoom, as CapCut and Premiere do it: 1 is the whole video, the most is about 1 s across. ⌘ or ctrl + wheel
+// and a trackpad pinch zoom around the cursor, a sideways swipe or shift + wheel pans. While playing the view pages along
+// with the playhead; a pan stops that until the next click, seek or play.
+let zm=1,tfol=true,tseek=false,tset=0;
+const zmax=()=>Math.max(1,D()),tstep=(vis,n)=>[.5,1,2,5,10,15,30,60,120,300,600].find(x=>vis/x<=n)||1200;
+function tscrollTo(x){const a=$('tscroll'),b=$('escroll');tset=performance.now();a.scrollLeft=x;if(b)b.scrollLeft=a.scrollLeft}   // both rows scroll as one
+function setZoom(z,cx){const T=D(),sc=$('tscroll'),inn=$('tinner');z=Math.max(1,Math.min(zmax(),z));
+  const r=sc.getBoundingClientRect(),ir=inn.getBoundingClientRect(),ph=ir.left+v.currentTime/T*ir.width;
+  if(cx==null)cx=ph>=r.left&&ph<=r.right?ph:r.left+r.width/2;   // buttons and keys hold the playhead still, else the middle
+  const f=(cx-ir.left)/ir.width,pad=ir.left-r.left+sc.scrollLeft;
+  zm=z;$('timeline').style.setProperty('--zm',z);$('tzr').value=Math.log(z)/Math.log(zmax())*100||0;
+  document.querySelectorAll('[data-tz="-"],[data-tz="fit"]').forEach(b=>b.disabled=z<=1);document.querySelector('[data-tz="+"]').disabled=z>=zmax();
+  renderBar();renderEdTracks();tscrollTo(pad+f*inn.offsetWidth-(cx-r.left))}
+document.querySelector('.tzoom').addEventListener('click',e=>{const b=e.target.closest('[data-tz]');if(!b)return;const k=b.dataset.tz;
+  if(k==='fit'){tfol=true;return setZoom(1)}setZoom(zm*(k==='+'?2:.5))});
+$('tzr').oninput=e=>setZoom(Math.pow(zmax(),e.target.value/100));
+$('timeline').addEventListener('wheel',e=>{
+  if(e.ctrlKey||e.metaKey){e.preventDefault();tfol=false;return setZoom(zm*Math.exp(-Math.max(-60,Math.min(60,e.deltaY))*.01),e.clientX)}
+  const dx=e.deltaX||(e.shiftKey?e.deltaY:0);if(!dx||zm<=1||!e.target.closest('#tscroll,#escroll'))return;
+  e.preventDefault();tfol=false;tscrollTo($('tscroll').scrollLeft+dx)},{passive:false});
+$('timeline').addEventListener('scroll',e=>{if(!/^(tscroll|escroll)$/.test(e.target.id))return;   // a scrollbar drag: the other row follows
+  if(performance.now()-tset>150)tfol=false;const o=$(e.target.id==='tscroll'?'escroll':'tscroll');if(o&&Math.abs(o.scrollLeft-e.target.scrollLeft)>1){tset=performance.now();o.scrollLeft=e.target.scrollLeft}},true);
+v.addEventListener('seeking',()=>{tfol=tseek=true});v.addEventListener('play',()=>tfol=true);
+function tfollow(){if(zm<=1||!tfol||(v.paused&&!tseek))return;tseek=false;
+  const sc=$('tscroll'),r=sc.getBoundingClientRect(),ir=$('tinner').getBoundingClientRect(),x=ir.left+v.currentTime/D()*ir.width;
+  if(x<r.left+8||x>r.right-24)tscrollTo(sc.scrollLeft+x-r.left-r.width*.1)}   // page along: the playhead goes back near the left
+// the edit's Text and Sounds rows: every text (made or changing) and every sound in the draft or put there by the user.
+const NOTE_ICON='<svg width="10" height="10" viewBox="0 0 12 12"><path d="M5 1.5v6.2A1.8 1.8 0 1 0 6.3 9.4V4l3.2-1V1z" fill="currentColor"/></svg>';
+function waveSvg(peaks){const n=(peaks||[]).length;if(!n)return '';
+  return `<svg class="wv" viewBox="0 0 ${n} 20" preserveAspectRatio="none" aria-hidden="true">${peaks.map((v,i)=>`<rect x="${i+.15}" y="${(10-Math.max(.6,v*9)).toFixed(2)}" width=".7" height="${(Math.max(.6,v*9)*2).toFixed(2)}" fill="rgba(255,255,255,.55)"/>`).join('')}</svg>`}
+// a caption line as it will read: its words with the retyped ones (overrides.json words) in place
+function capText(c){const cw=(S&&S.cap_words)||{};if(!(c.w||[]).some(k=>k in cw))return {text:c.text,edited:false};
+  const orig=c.text.split(/\s+/);return {text:c.w.map((k,i)=>k in cw?cw[k]:orig[i]||'').filter(Boolean).join(' '),edited:true}}
+function renderEdTracks(){const E=$('edtracks'),T=D();
+  const on=!!(S&&view&&view.stage==='edit'&&noteOk()&&!cmp)&&!!T;$('timeline').classList.toggle('edon',on);
+  if(!on){E.innerHTML='';E._h='';return}
+  const pc=t=>Math.max(0,Math.min(100,t/T*100)),it=data().items||{};
+  const gone=new Set((S.sfx_removed||[]).map(t=>t.toFixed(2))),inDraft=new Set((it.sfx||[]).map(x=>x.placed).filter(Boolean));
+  const sname=src=>String(src).split('/').pop().replace(/\.[a-z0-9]+$/i,'').replace(/^own-(house|skit|simple|swoop|windy|digital)-/,'').replace(/^own-/,'');
+  const step=tstep(T/zm,10),ticks=[];for(let t=0;t<T;t+=step)ticks.push(t);
+  const texts=textItems().map(x=>`<div class="eitem txt${x.fresh?' pend':''}" data-et="${esc(String(x.id))}" data-ef="${x.fresh?1:''}" style="left:${pc(x.start)}%;width:${pc(x.end)-pc(x.start)}%" title="${esc(x.text)} · ${fmtx(x.start)}–${fmtx(x.end)}${x.locked?' · Claude has it':' · click to change'}"><span>${esc(x.text)}</span>${x.locked?'':`<b class="ex" data-ex="1" title="Remove">×</b>`}</div>`).join('');
+  const clip=(t0,d,cls,attrs,name,peaks,at)=>`<div class="eitem snd${cls}" ${attrs} style="left:${pc(t0)}%;width:${(d||.3)/T*100}%" title="${esc(name)} · ${fmtx(at)} · ${(d||0).toFixed(1)} s · click to hear it">${waveSvg(peaks)}<span>${esc(name)}</span><b class="ex" data-ex="1" title="Remove">×</b></div>`;
+  const snds=(it.sfx||[]).map(x=>clip(x.start??x.t,x.d,gone.has(x.t.toFixed(2))?' gone':'',`data-st="${x.t}" data-ssrc="${esc(x.src)}"${x.placed?` data-sp2="${esc(x.placed)}"`:''}`,sname(x.src),x.peaks,x.t)).join('')
+    +(S.placed_sounds||[]).filter(x=>!inDraft.has(x.id)).map(x=>clip(x.t,x.d,' pend',`data-st="${x.t}" data-ssrc="${esc(x.sound)}" data-sp2="${esc(x.id)}"`,x.sound.replace(/\.[a-z0-9]+$/i,''),x.peaks,x.t)).join('');
+  const caps=(it.captions||[]).map((c,i)=>{const ct=capText(c);return `<div class="eitem cap${ct.edited?' pend':''}${!ct.text?' gone':''}" data-ec="${i}" style="left:${pc(c.s)}%;width:${pc(c.e)-pc(c.s)}%" title="${esc(ct.text||c.text)} · ${fmtx(c.s)} · click to edit"><span>${esc(ct.text||c.text)}</span><b class="ex" data-ex="1" title="Delete this caption">×</b></div>`}).join('');
+  const h=`<div class="edwrap"><div class="edleft"><button id="addtx" title="Add a text at the playhead">+ Text</button><button id="capedit" title="Edit the captions">Captions</button><button id="addsnd" title="Add one of your sounds at the playhead">+ Sound</button></div>
+    <div class="edright">
+    <div class="escroll" id="escroll"><div class="einner"><div class="eruler">${ticks.map(t=>`<span style="left:${pc(t)}%">${step<1?fmtx(t):fmt(t)}</span>`).join('')}</div>
+    <div class="etrack" data-row="text">${texts}</div><div class="etrack" data-row="cap">${caps}</div><div class="etrack" data-row="snd">${snds}</div><b class="eph" id="eph"></b></div></div></div></div>`;
+  if(E._h!==h){E._h=h;E.innerHTML=h;tscrollTo($('tscroll').scrollLeft);
+    E.querySelectorAll('.eitem.snd').forEach(c=>c.classList.toggle('narrow',c.offsetWidth<48))}edPh()}
+function edPh(){const ph=$('eph'),T=D();if(ph&&T)ph.style.left=v.currentTime/T*100+'%'}
+$('edtracks').addEventListener('click',async e=>{
+  const tk=e.target.closest('.etrack');if(tk&&!e.target.closest('.eitem')){const r=tk.getBoundingClientRect();v.currentTime=Math.max(0,(e.clientX-r.left)/r.width*D());return}   /* click empty track: go there */
+  if(e.target.id==='addtx'){if(tool!=='text')openTool('text');setText('outline');return}
+  if(e.target.id==='addsnd'){return openSndPick(e.target)}
+  if(e.target.id==='capedit'){return openCapLine(null)}
+  const ci=e.target.closest('[data-ec]');if(ci){const c=(data().items.captions||[])[+ci.dataset.ec];
+    if(e.target.closest('[data-ex]')){e.stopPropagation();return saveCapLine(c,'')}
+    return openCapLine(c)}
+  const ti=e.target.closest('[data-et]'),si=e.target.closest('[data-st]'),ex=e.target.closest('[data-ex]');
+  if(ti&&ex){e.stopPropagation();return delText(ti.dataset.et,!!ti.dataset.ef)}
+  if(ti){if(tool!=='text')openTool('text');return editText(ti.dataset.et,ti.dataset.ef)}
+  if(si&&ex){e.stopPropagation();const r=await post('/sfx/remove',{t:+si.dataset.st,src:si.dataset.ssrc,...(si.dataset.sp2?{placed:si.dataset.sp2}:{})});
+    if(!r.id)return toast(r.error||'That did not save.');toast('Sound removed. Submit feedback and the next draft drops it.');$('edtracks')._h=null;return load()}
+  if(si){v.currentTime=Math.max(0,+si.dataset.st-.6);v.play();setTimeout(()=>v.pause(),1600)}});   /* hear it in place */
+function openSndPick(btn){const P=$('sndpick'),own=((S.sounds_ui||{}).own)||[],groups={};
+  own.forEach(f=>{const m=f.match(/^([a-z0-9]+) /i),g=m?m[1]:'Yours';(groups[g]=groups[g]||[]).push(f)});
+  P.innerHTML=`<div class="tcap" style="margin:2px 4px 4px"><span>Add a sound at ${fmtx(v.currentTime)}</span></div>`+(own.length?Object.entries(groups).map(([g,fs])=>`<h4>${esc(g[0].toUpperCase()+g.slice(1))}</h4>${fs.map(f=>`<div class="sitem"><button class="splay sm" data-pp2="${esc(f)}" title="Play">${PLAY}</button><button class="spick" data-add="${esc(f)}">${esc(f.replace(/\.[a-z0-9]+$/i,'').replace(/^[a-z0-9]+ /i,''))}</button></div>`).join('')}`).join('')
+    :'<p class="tsub" style="padding:4px">No sounds of your own yet. Add one in the Sounds panel (+ Your own).</p>');
+  const r=btn.getBoundingClientRect(),tr=$('timeline').getBoundingClientRect();P.style.left=(r.left-tr.left)+'px';P.style.bottom=(tr.bottom-r.top+6)+'px';P.hidden=false;P.dataset.t=v.currentTime}
+$('sndpick').addEventListener('click',async e=>{const pp=e.target.closest('[data-pp2]'),ad=e.target.closest('[data-add]');
+  if(pp)return sndPlay('zoom',pp.dataset.pp2);
+  if(!ad)return;const r=await post('/sfx/add',{t:+$('sndpick').dataset.t,sound:ad.dataset.add});$('sndpick').hidden=true;
+  if(!r.id)return toast(r.error||'That did not save.');toast(`${ad.innerText} added at ${fmtx(+$('sndpick').dataset.t)}. Submit feedback so the next draft has it.`);$('edtracks')._h=null;load()});
+document.addEventListener('pointerdown',e=>{const P=$('sndpick');if(!P.hidden&&!P.contains(e.target)&&e.target.id!=='addsnd')P.hidden=true});
 function renderTracks(){
   const tr=view.stage==='edit'&&data().tracks,T=D();
   $('timeline').classList.toggle('tracked',!!tr);
@@ -903,7 +1186,7 @@ function noteHtml(c){
   const tm=c.t_end!=null&&!old?fmtx(c.t)+'–'+fmtx(c.t_end):fmtx(t);
   const thumb=old?'':`<img class="thumb${S.vertical?'':' wide'}" src="/frames/${encodeURIComponent(c.frame)}" alt="" loading="lazy">`;
   const imgs=(c.images||[]).length?`<div class="att">${c.images.map((x,i)=>`<a href="/frames/${encodeURIComponent(x)}" target="_blank" rel="noopener"><img src="/frames/${encodeURIComponent(x)}" alt="">Image ${i+1}</a>`).join('')}</div>`:'';
-  const card=c.card?`<span class="cardm">Card ${c.card.i+1}${c.card.trigger_word?' on "'+esc(c.card.trigger_word)+'"':''}</span>`:'';
+  const card=c.add_text?`<span class="cardm">Text on screen · ${TSTY[c.add_text.style]}</span>`:c.card?`<span class="cardm">Card ${c.card.i+1}${c.card.trigger_word?' on "'+esc(c.card.trigger_word)+'"':''}</span>`:'';
   const moved=old&&c.new_t!=null&&fmt(c.new_t)!==fmt(c.t)?` (${fmt(c.t)} in ${dn(roundOf(c.stage,c.round))})`:'';
   const body=ed?`<textarea class="edta" aria-label="edit note">${esc(editing.text)}</textarea>
     ${editing.images.length?`<div class="att">${editing.images.map((x,i)=>`<span class="rm"><a><img src="${x.startsWith('data:')?x:'/frames/'+encodeURIComponent(x)}" alt="">Image ${i+1}</a><button data-rmimg="${i}" aria-label="remove image">×</button></span>`).join('')}</div>`:''}
@@ -939,18 +1222,18 @@ function workHtml(){
       :`<li class="todo"><span class="ic"><i></i></span>${esc(m.steps[k])}</li>`).join('')
       +(m.extra?`<li class="now"><span class="ic">${SPIN}</span>${esc(m.extra)}</li>`:'');
     const ok=S.stills?'The preview is approved. ':'The cut is approved. ';
-    return `<div class="claude"><div><b>Claude</b><p>${esc(m.idle?ok+m.idle:ok+(S.stills?'Claude is making the video':'Claude is making the edit')+(m.style?' in '+m.style:'')+'.')}</p></div><ol class="steps">${li}</ol>${m.at&&!m.idle?`<span class="since" data-since="${esc(m.at)}">Working for ${dur((Date.now()-new Date(m.at))/1000)}</span>`:''}</div>`}
+    return `<div class="claude"><div><b>Claude</b><p>${esc(m.idle?ok+m.idle:ok+(S.stills?'Claude is making the video':'Claude is making the edit')+(m.style?' in '+m.style:'')+'.')}</p></div><ol class="steps">${li}</ol>${m.at&&!m.idle?`<span class="since" data-since="${esc(m.at)}">Working for ${dur((Date.now()-new Date(m.at))/1000)}</span>`:''}${sessBtn()}</div>`}
   if(p==='approve')return `<div class="claude"><div><b>Claude</b><p>${S.stage==='cut'?'The cut is approved. It is the finished video.':'Approved. The edit is finished.'}</p></div></div>`+learnHtml();
   if(S.raw&&S.cut_steps)return cutHtml(S.cut_steps);
   if(p!=='send'&&(!live||S.stage==='cut'))return '';   // the cut is ready: what Claude does next is the edit's prep, not this round
   const ed=editsSent()?S.events[S.events.length-1]:null,nch=ed?plural(ed.n,'transcript change'):'';
-  const head=S.raw?'Making the cut. Your clip plays meanwhile. Notes you leave now go on the cut.':ed?(act.length?`Claude is applying your changes (${nch}). The next draft opens here.`:picked?`Claude has your ${nch} and is starting ${nextDn()}.`:S.listening||S.busy?`${nch} saved. Waiting for Claude to pick them up.`:`${nch} saved, but Claude is not listening. Ask Claude in the terminal to apply them.`):p==='send'?(act.length?`Making ${nextDn()}.`:picked?`Claude has your notes and is starting ${nextDn()}.`:'Notes sent. Waiting for Claude to pick them up.'+(S.listening||!S.busy?'':' Claude is finishing something and takes them next.')):'Still coming in this draft:';
+  const head=S.raw?'Making the cut. Your clip plays meanwhile. Notes you leave now go on the cut.':ed?(act.length?`Claude is applying your changes (${nch}). The next draft opens here.`:picked&&alive(S)?`Claude has your ${nch} and is starting ${nextDn()}.`:S.listening||S.busy?`${nch} saved. Waiting for Claude to pick them up.`:`${nch} saved. Submit opens a new Claude to apply them.`):p==='send'?(act.length?`Making ${nextDn()}.`:picked&&alive(S)?`Claude has your notes and is starting ${nextDn()}.`:newClaude(S)||(!alive(S)?'Notes sent, but Claude is not listening. Press Copy for Claude at the top and paste it into Claude Code.':'Notes sent. Waiting for Claude to pick them up.'+(S.listening||!S.busy?'':' Claude is finishing something and takes them next.'))):'Still coming in this draft:';
   if(p!=='send'&&!ed&&!S.raw&&!act.some(x=>x.step||x.pct!=null))   // the draft is out: a plain line from Claude is a remark, not work still coming
     return `<div class="claude"><div><b>Claude</b>${act.map(x=>`<p>${esc(x.text)}</p>`).join('')}</div></div>`;
   const li=act.map(x=>x.done?`<li><span class="ic">${TICK}</span>${esc(x.text)}</li>`
     :`<li class="now"><span class="ic">${SPIN}</span>${esc(x.text)}</li>`+(x.pct!=null?`<li class="pb"><em><i style="width:${x.pct}%"></i></em>${x.pct}%</li>`:'')).join('');
   const sent=e&&e.type==='send'?e.at:null;
-  return `<div class="claude"><div><b>Claude</b><p>${esc(head)}</p></div>${li?`<ol class="steps">${li}</ol>`:''}${sent&&p==='send'?`<span class="since" data-since="${esc(sent)}">Working for ${dur((Date.now()-new Date(sent))/1000)}</span>`:''}</div>`;
+  return `<div class="claude"><div><b>Claude</b><p>${esc(head)}</p></div>${li?`<ol class="steps">${li}</ol>`:''}${sent&&p==='send'?`<span class="since" data-since="${esc(sent)}">Working for ${dur((Date.now()-new Date(sent))/1000)}</span>`:''}${sessBtn()}</div>`;
 }
 // round 0: every step the cut takes (review.py cut_steps, from the scripts' own reports), ticked as they finish
 function cutHtml(c){
@@ -967,7 +1250,7 @@ function rcptHtml(id){
   return `<div class="rcpt">${TICK}<span>${r.status==='added'?'Saved to':'Already in'} ${esc(r.style)}: ${esc(r.rule)}.${r.status==='added'?` <button data-undo="${r.id}">Undo</button>`:''}</span></div>`;
 }
 // the final approve: Claude's rules from this video's notes, each ticked, into the style on Update
-let untick=new Set(),introOff=false,sureBack=null;
+let lTo=null,lOpen=false,lName='',lErr='',untick=new Set(),introOff=false,sureBack=null;
 // a moment on one round at the same words on another (both cut transcripts list the same words), else the same time
 function mapT(t,from,to){
   const flat=k=>(((DATA[k]||{}).transcript||{}).lines||[]).flatMap(l=>l.tokens.filter(x=>'w' in x)),a=flat(from),b=flat(to);
@@ -982,14 +1265,26 @@ function learnHtml(){
   if(L.state==='reading')return `<div class="learn">${head}<p class="wait"><i></i>Claude is reading your notes...</p></div>`;
   const open=L.state==='proposed',rs=(L.rules||[]).map((r,i)=>[r,i]).filter(([,i])=>open||L.chosen.includes(i));
   const rows='<div class="lrules">'+rs.map(([r,i])=>`<label class="lrule${open&&untick.has(i)?' off':''}"><input type="checkbox" data-li="${i}"${open&&untick.has(i)?'':' checked'}${open?'':' disabled'}><span>${esc(r.rule)}.</span></label>`).join('')+'</div>';
-  if(open)return `<div class="learn"><div>${head}<p>From your notes. Untick anything it should not keep.</p></div>${rows}
-    <div class="erow"><button class="go" data-lsave${rs.every(([,i])=>untick.has(i))?' disabled':''}>Update my style</button><button data-lskip>Not now</button></div></div>`;
-  if(L.state==='chosen')return `<div class="learn">${head}${rows}<p class="wait"><i></i>Saving to ${esc(L.style)}...</p></div>`;
+  if(open){
+    const st=L.styles&&L.styles.length?L.styles:[{id:'',name:L.style||'My style',rules:0,here:true}],to=lTo==null?st.find(x=>x.here)||st[0]:lTo==='new'?null:st.find(x=>x.id===lTo)||st[0];
+    const sub=x=>[x.here?'This video\u2019s style':x.mine?'Every video':'',x.rules?plural(x.rules,'rule'):''].filter(Boolean).join(' · ')||'No rules yet';
+    const CHK='<svg width="14" height="14" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const menu=lOpen?`<div class="lmenu" role="listbox">${st.map(x=>`<button role="option" aria-selected="${to===x}" class="${to===x?'cur':''}" data-lto="${esc(x.id)}"><span class="ck">${to===x?CHK:''}</span><span class="t"><b>${esc(x.name)}</b><i>${esc(sub(x))}</i></span></button>`).join('')}<hr>
+      <button role="option" aria-selected="${!to}" class="${to?'':'cur'}" data-lto="+new"><span class="ck"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 2.5v9M2.5 7h9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span class="t"><b>New style from this video</b><i>A copy of ${esc((st.find(x=>x.here)||st[0]).name)} with these rules</i></span></button></div>`:'';
+    const none=rs.every(([,i])=>untick.has(i)),noName=!to&&!lName.trim();
+    return `<div class="learn"><div>${head}<p>From your notes. Untick anything it should not keep.</p></div>${rows}
+    <div class="lsave"><span>Save to</span><button class="ldd" data-ldd aria-haspopup="listbox" aria-expanded="${lOpen}"><span class="nm">${to?esc(to.name):'New style from this video'}</span>${to&&to.rules?`<span class="sub">${plural(to.rules,'rule')}</span>`:''}<svg width="14" height="14" viewBox="0 0 14 14"><path d="M3.5 5.5l3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>${menu}
+      ${to?'':`<input class="lname" maxlength="40" placeholder="Name it, like Podcast clips" value="${esc(lName)}" aria-label="name the new style">`}${lErr?`<span class="lerr">${esc(lErr)}</span>`:''}</div>
+    <div class="lact"><button class="go" data-lsave${none||noName?' disabled':''}>${to?'Save to '+esc(to.name):'Save new style'}</button><button class="skip" data-lskip>Not now</button></div></div>`;
+  }
+  if(L.state==='chosen')return `<div class="learn">${head}${rows}<p class="wait"><i></i>Saving to ${esc((L.to&&L.to.name)||L.style)}...</p></div>`;
   if(L.receipts&&L.receipts.length){const kept=(S.receipts||[]).filter(r=>L.receipts.includes(r.id)&&!r.undone).length;
     return `<div class="learn">${head}<div class="lrules">${L.receipts.map(rcptHtml).join('')}</div><p>${kept?`Your next video uses ${kept>1?'them':'it'}. Every rule is listed on the style's page.`:'Your style stays as it was.'}</p></div>`}
   return `<div class="learn">${head}${rows}<p class="ok">${TICK}${esc(L.summary||'Saved.')}</p></div>`;
 }
 const EDIT_STEPS={captions:'Writing the captions',visuals:'Finding the visuals',plan:'Planning zooms, cards and sound',render:'Making the video'};
+// Claude is on this edit: listening, a review command in the last 15 min, or a step's render log still moving
+function alive(S){const o=(S.activity||[]).filter(x=>x.round===S.round&&!x.done).pop();return !!(S.listening||S.busy||o&&o.log_age!=null&&o.log_age<120)}
 function makeState(){   // the edit's steps from Claude's status reports (review.py EDIT_STEPS); nothing made up
   const steps=(S.making&&S.making.steps)||EDIT_STEPS,keys=Object.keys(steps),act=(S.activity||[]).filter(x=>x.round===S.round);
   const ev=[...S.events].reverse().find(e=>e.type==='approve'&&(e.stage==='cut'||e.stills)),at=ev&&ev.at;
@@ -998,8 +1293,7 @@ function makeState(){   // the edit's steps from Claude's status reports (review
   const pct=!land&&last&&!last.done&&last.step==='render'&&last.pct!=null?last.pct:null;
   const frac=cur<0?0:Math.min(1,(cur+(closed?1:pct!=null?pct/100:.5))/keys.length);
   const left='';   // no time estimates on a step
-  const alive=S.busy||!!(open&&open.log_age!=null&&open.log_age<120);   // a step is open only while Claude reports or its render log moves
-  const idle=!alive?'No word from Claude for a while. If it stopped, go back to Claude and say go on.':'';
+  const idle=!alive(S)?'No word from Claude for a while. If it stopped, press Start Claude at the top.':'';
   return {steps,keys,cur,closed,pct,frac,at,left,idle,style:(S.making&&S.making.style)||'',
     now:open?open.text:cur>=0?steps[keys[cur]]:'Starting',extra:open&&!open.step?open.text:''};
 }
@@ -1062,9 +1356,12 @@ function renderList(){
   if(queued.length)h+=`<p class="sub">${S.raw?'For the cut':'For the next draft'}</p>`+queued.map(noteHtml).join('');
   const l=$('list'),keepScroll=l.scrollTop,atEnd=l.scrollHeight-keepScroll-l.clientHeight<40,hadFocus=document.activeElement&&document.activeElement.classList.contains('edta');
   const hadLearn=!!l.querySelector('.learn'),newP=p!==renderList.p;renderList.p=p;
+  const ln=document.activeElement&&document.activeElement.classList.contains('lname')?document.activeElement.selectionStart:null;
   // with Claude: open at the work panel at the bottom, then stay where the user scrolled (status lines re-render this)
   l.innerHTML=h;l.scrollTop=isCur()&&p&&!editing&&(atEnd||newP)?l.scrollHeight:keepScroll;
   const lp=l.querySelector('.learn');if(lp&&!hadLearn)lp.scrollIntoView({block:'end'});
+  const lnm=l.querySelector('.lname');if(lnm){lnm.oninput=()=>{lName=lnm.value;lErr='';const b=l.querySelector('[data-lsave]');if(b)b.disabled=!lName.trim()||(S.learn.rules||[]).every((r,i)=>untick.has(i))};
+    lnm.onkeydown=ev=>{if(ev.key==='Enter'&&lName.trim()){ev.preventDefault();l.querySelector('[data-lsave]').click()}};if(ln!=null){lnm.focus();lnm.setSelectionRange(ln,ln)}}
   const ea=$('list').querySelector('.edta');
   if(ea){ea.oninput=()=>editing.text=ea.value;ea.onkeydown=ev=>{if(ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();saveEdit()}if(ev.key==='Escape'){ev.preventDefault();editing=null;renderList()}};
     ea.onpaste=ev=>{const fs=[...(ev.clipboardData?.files||[])];if(fs.length){ev.preventDefault();editFiles(fs)}};
@@ -1080,7 +1377,7 @@ const TRK={hooks:['New hooks','A different first line.'],same:['Same order','Fro
   rewind:['Rewind','Opens on a later line, then cuts back to the start.'],section:['One section','One part, with its own hook and ending.'],
   animations:['New animations','New motion graphics and cards.']};
 const DOWN='<svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-let TR=null,trV=-1,trMenu=null,trAsk='',trOpened=-1;
+let TR=null,trV=-1,trMenu=null,trAsk='',trOpened=-1,trFor=null;
 const kindLab=ks=>ks[0]==='claude'?'Let Claude decide':ks.map(k=>TRK[k][0]).join(' + ');
 function trSync(){const t=S.trials;if(t.v===trV)return;trV=t.v;trMenu=null;
   TR={versions:t.versions.map(v=>({kinds:[...v.kinds],k0:v.kinds.join(),line:v.line})),hooks:new Set(t.hooks.map((h,i)=>i)),idea:!!t.idea}}
@@ -1094,9 +1391,10 @@ function trialsHtml(){
   if(t.state==='skipped')return h+'<p class="empty2">Skipped. No trial reels for this one.</p>';
   if(t.state==='chosen'){
     const have=new Set((S.alts||[]).filter(a=>a.trial).map(a=>a.name)),vs=t.picks.versions;
-    return h+`<div class="tr"><div class="trh">Making ${plural(vs.length,'trial reel')}</div><div class="trrows">${vs.map((v,i)=>{const n='t'+(i+1),ok=have.has(n);
+    return h+`<div class="tr"><div class="trh">${vs.every((v,i)=>have.has('t'+(i+1)))?'Your '+plural(vs.length,'trial reel'):'Making '+plural(vs.length,'trial reel')}</div><div class="trrows">${vs.map((v,i)=>{const n='t'+(i+1),ok=have.has(n);
       return `<div class="trr"><b>${n}</b><div>${esc(kindLab(v.kinds))}${v.line?`<small>${esc(v.line)}</small>`:''}</div><em class="${ok?'ok':''}">${ok?'Ready':'Making'}</em></div>`}).join('')}</div>
-      <p class="empty2">Each one lands in the Version menu above the video as it renders.</p></div>`;
+      <p class="empty2">Each one lands in the Version menu above the video as it renders.</p></div>`
+      +trNotesHtml(vs.length);
   }
   const off=!isCur()||t.handled===false;
   if(t.handled===false)h+='<p class="trwait"><i></i>Claude is reading your question...</p>';
@@ -1114,6 +1412,16 @@ function trialsHtml(){
     <button class="go" data-trmake${off||!n?' disabled':''}>Make ${plural(n,'trial reel')}</button><button class="skip" data-trskip${off?' disabled':''}>Skip trial reels</button></div>`;
   return h;
 }
+// once made: notes on the trial reels. "For" is the version on screen (with the playhead's time) unless picked;
+// Claude changes that version, puts it back under the same name, and answers here (trials --reply).
+function trNotesHtml(n){
+  const t=S.trials,ns=t.notes||[],names=Array.from({length:n},(_,i)=>'t'+(i+1)),def=names.includes(alt)?alt:'all',who=trFor||def;
+  const lab=x=>(x.for==='all'?'All trial reels':x.for)+(x.t!=null?' · '+fmt(x.t):'');
+  let h=ns.map(x=>`<div class="trq"><small>${esc(lab(x))}</small>${esc(x.text)}</div>`+(x.reply?`<div class="claude"><div><b>Claude</b><p>${esc(x.reply)}</p></div></div>`:'')).join('');
+  if(ns.some(x=>!('reply' in x)))h+='<p class="trwait"><i></i>Claude has your notes and is changing the trial reels...</p>';
+  return h+`<div class="trfoot"><label class="trforl">For <select class="trfor" aria-label="which trial reel the note is for"><option value="all"${who==='all'?' selected':''}>All trial reels</option>${names.map(x=>`<option value="${x}"${who===x?' selected':''}>${x}${x===alt?' (on screen)':''}</option>`).join('')}</select></label>
+    <div class="trask"><textarea class="trta" rows="2" placeholder="Feedback on the trial reels: a different hook, cut this bit, a new title..."></textarea><button data-trsend aria-label="send to Claude">${'<svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 12V2M3 6l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'}</button></div></div>`;
+}
 function trMenuHtml(v,i){
   const c=v.kinds[0]==='claude',on=k=>v.kinds.includes(k),dis=k=>k==='same'&&on('rewind')||k==='rewind'&&on('same');
   return `<div class="trmenu" role="menu"><button class="${c?'on':''}" data-trpick="claude"><i class="rd"></i><span><b>Let Claude decide</b><small>Claude picks the mix that makes this one look most different.</small></span></button><hr><div class="lab">Or pick one or more</div>`
@@ -1126,7 +1434,11 @@ function trPlace(){   // the open menu flips up when the panel has no room under
   if(m.getBoundingClientRect().bottom>floor-8&&m.parentElement.getBoundingClientRect().top-l.getBoundingClientRect().top>m.offsetHeight)m.classList.add('up');
 }
 async function trPost(b){const r=await fetch('/trials',{method:'POST',body:JSON.stringify(b)});if(!r.ok)alert((await r.json().catch(()=>({}))).error||'Could not send it');await load(true)}
-function trSend(){const text=trAsk.trim();if(!text)return;trAsk='';trPost({action:'ask',text})}
+function trSend(){const text=trAsk.trim();if(!text)return;trAsk='';
+  if(S.trials.state!=='chosen')return trPost({action:'ask',text});
+  const n=(S.trials.picks.versions||[]).length,names=Array.from({length:n},(_,i)=>'t'+(i+1)),who=trFor||(names.includes(alt)?alt:'all');
+  trFor=null;trPost({action:'note',text,for:who,...(who!=='all'&&who===alt?{t:+v.currentTime.toFixed(1)}:{})})}
+$('list').addEventListener('change',e=>{if(e.target.classList.contains('trfor'))trFor=e.target.value});
 $('list').addEventListener('input',e=>{if(e.target.classList.contains('trta'))trAsk=e.target.value});
 $('list').addEventListener('keydown',e=>{if(e.target.classList.contains('trta')&&e.key==='Enter'&&!e.shiftKey){e.preventDefault();trSend()}});
 $('list').addEventListener('change',e=>{const i=e.target.dataset.trhook;if(i==null)return;TR.hooks[e.target.checked?'add':'delete'](+i)});
@@ -1173,8 +1485,15 @@ $('introx').onclick=()=>{introOff=true;document.body.classList.remove('intro');p
 $('list').addEventListener('click',async e=>{
   const ub=e.target.closest('[data-undo]');
   if(ub){ub.disabled=true;const r=await fetch('/undo',{method:'POST',body:JSON.stringify({id:+ub.dataset.undo})});if(!r.ok)alert('That rule was already taken out.');return load(true)}
-  if(e.target.closest('[data-lsave],[data-lskip]')){const L=S.learn,save=!!e.target.closest('[data-lsave]');
-    await post('/learn',save?{chosen:L.rules.map((r,i)=>i).filter(i=>!untick.has(i))}:{skip:true});return load(true)}
+  if(e.target.closest('[data-ldd]')){lOpen=!lOpen;return renderList()}
+  const lt=e.target.closest('[data-lto]');
+  if(lt){lTo=lt.dataset.lto==='+new'?'new':lt.dataset.lto;lOpen=false;lErr='';renderList();const n=$('list').querySelector('.lname');if(n)n.focus();return}
+  if(lOpen&&!e.target.closest('.lsave')){lOpen=false;renderList()}
+  if(e.target.closest('[data-lsave],[data-lskip]')){const L=S.learn,save=!!e.target.closest('[data-lsave]'),chosen=L.rules.map((r,i)=>i).filter(i=>!untick.has(i));
+    const body=!save?{skip:true}:lTo==='new'?{chosen,new:lName}:lTo!=null?{chosen,to:lTo}:{chosen};
+    const r=await fetch('/learn',{method:'POST',body:JSON.stringify(body)});
+    if(!r.ok){let j={};try{j=await r.json()}catch(x){}lErr=j.error||'That did not save. Try again.';return renderList()}
+    lErr='';return load(true)}
   if(e.target.closest('.editing')){
     if(e.target.closest('[data-save]'))return saveEdit();
     if(e.target.closest('[data-cancel]')){editing=null;return renderList()}
@@ -1447,14 +1766,25 @@ v.addEventListener('timeupdate',()=>skip(v.currentTime));v.addEventListener('pla
 // player
 const toggle=()=>{v.paused?v.play():v.pause()};
 v.addEventListener('click',toggle);v2.addEventListener('click',toggle);$('play').onclick=toggle;
-const icon=()=>{$('play').innerHTML=v.paused?'<svg width="14" height="14" viewBox="0 0 14 14"><path d="M3.5 1.5v11l9-5.5z" fill="currentColor"/></svg>':'<svg width="14" height="14" viewBox="0 0 14 14"><rect x="2" y="1" width="3.5" height="12" rx="1" fill="currentColor"/><rect x="8.5" y="1" width="3.5" height="12" rx="1" fill="currentColor"/></svg>';};
+const icon=()=>{$('play').innerHTML=$('fsplay').innerHTML=v.paused?'<svg width="14" height="14" viewBox="0 0 14 14"><path d="M3.5 1.5v11l9-5.5z" fill="currentColor"/></svg>':'<svg width="14" height="14" viewBox="0 0 14 14"><rect x="2" y="1" width="3.5" height="12" rx="1" fill="currentColor"/><rect x="8.5" y="1" width="3.5" height="12" rx="1" fill="currentColor"/></svg>';};
 v.addEventListener('play',icon);v.addEventListener('pause',icon);icon();
 $('back').onclick=()=>v.currentTime-=5;$('fwd').onclick=()=>v.currentTime+=5;
 function setSpeed(x){speed=x;v.playbackRate=x;try{localStorage.setItem('review-speed',x)}catch(e){}$('speed').textContent=x+'x'}
 $('speed').onclick=()=>setSpeed(SPEEDS[(SPEEDS.indexOf(speed)+1)%SPEEDS.length]);setSpeed(speed);
-v.addEventListener('loadedmetadata',()=>{v.playbackRate=speed;renderBar();renderTracks()});
+v.addEventListener('loadedmetadata',()=>{v.playbackRate=speed;setZoom(zm);renderTracks();renderEdTracks()});
 $('mute').onclick=()=>{v.muted=!v.muted;$('mute').textContent=v.muted?'Muted':'Sound'};
-$('full').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.querySelector('#p1 .player').requestFullscreen();
+const PL=document.querySelector('#p1 .player');
+$('full').onclick=()=>document.fullscreenElement?document.exitFullscreen():PL.requestFullscreen();
+// full screen: the player with its own bar; scrub with a time under the cursor, the bar hides after 2 s still while playing
+$('fsplay').onclick=toggle;$('fsback').onclick=()=>v.currentTime-=5;$('fsfwd').onclick=()=>v.currentTime+=5;$('fsexit').onclick=()=>document.exitFullscreen();
+let fsIdle=0,fsDrag=false;
+function fsWake(){PL.classList.remove('fsidle');clearTimeout(fsIdle);fsIdle=setTimeout(()=>{if(!v.paused&&!fsDrag)PL.classList.add('fsidle')},2000)}
+PL.addEventListener('pointermove',fsWake);v.addEventListener('play',fsWake);v.addEventListener('pause',fsWake);document.addEventListener('fullscreenchange',fsWake);
+document.addEventListener('keydown',()=>{if(document.fullscreenElement)fsWake()});
+const fsAt=e=>{const r=$('fsscrub').getBoundingClientRect();return Math.min(1,Math.max(0,(e.clientX-r.left)/r.width))};
+$('fsscrub').addEventListener('pointerdown',e=>{fsDrag=true;$('fsscrub').setPointerCapture(e.pointerId);v.currentTime=fsAt(e)*D()});
+$('fsscrub').addEventListener('pointermove',e=>{const h=$('fshover'),f=fsAt(e);h.style.display='block';h.style.left=f*100+'%';h.textContent=fmtx(f*D());if(fsDrag)v.currentTime=f*D()});
+$('fsscrub').addEventListener('pointerup',()=>{fsDrag=false;fsWake()});$('fsscrub').addEventListener('pointerleave',()=>{if(!fsDrag)$('fshover').style.display='none'});
 $('vsel').onchange=e=>{alt=e.target.value;inT=outT=null;setVideo();render()};
 $('safebtn').onclick=()=>{const on=!document.querySelector('.player').classList.contains('safe');
   document.querySelectorAll('.player').forEach(p=>p.classList.toggle('safe',on));$('safebtn').textContent=on?'Hide safe zone':'Safe zone';placeSafe()};
@@ -1470,12 +1800,13 @@ function tick(){const T=D(),t=v.currentTime,p=Math.min(100,t/T*100);
   document.querySelectorAll('.pin').forEach(el=>el.classList.toggle('cur',el.dataset.old==='0'&&Math.abs(+el.dataset.pt-t)<1));
   document.querySelectorAll('#ticks span[data-s]').forEach((el,i,all)=>el.classList.toggle('cur',t>=+el.dataset.s&&(!all[i+1]||t<+all[i+1].dataset.s)));
   document.querySelectorAll('.track .ph').forEach(el=>el.style.left=p+'%');
-  $('time').innerHTML=`<b>${fmtx(t)}</b><span>/ ${fmt(v.duration||0)}</span>`;tickTx();renderHits()}
+  $('time').innerHTML=`<b>${fmtx(t)}</b><span>/ ${fmt(v.duration||0)}</span>`;
+  $('fsfill').style.width=$('fsknob').style.left=p+'%';$('fstime').innerHTML=`<b>${fmtx(t)}</b> / ${fmt(v.duration||0)}`;tfollow();tickTx();renderHits();renderTexts();if(!csel)drawPending();edPh()}
 v.addEventListener('timeupdate',tick);v.addEventListener('seeked',tick);
 const at=e=>{const r=bar.getBoundingClientRect();return Math.min(1,Math.max(0,(e.clientX-r.left)/r.width))*(v.duration||0)};
 bar.addEventListener('pointerdown',e=>{dragging=true;bar.setPointerCapture(e.pointerId);v.currentTime=at(e);tick()});
 bar.addEventListener('pointermove',e=>{const h=$('hover'),t=at(e),r=bar.getBoundingClientRect();
-  h.style.display='block';h.style.left=(e.clientX-r.left)+'px';h.textContent=fmtx(t);if(dragging){v.currentTime=t;tick()}});
+  h.style.display='block';h.style.left=Math.max(26,Math.min(r.width-26,e.clientX-r.left))+'px';h.textContent=fmtx(t);if(dragging){v.currentTime=t;tick()}});
 bar.addEventListener('pointerup',()=>dragging=false);bar.addEventListener('pointerleave',()=>{if(!dragging)$('hover').style.display='none'});
 
 // click-to-note: the card, caption, title or zoom on the frame now (review.py screen_items). Hover outlines each one;
@@ -1491,14 +1822,61 @@ function renderHits(){
     ...(it.zooms||[]).filter(on).map(x=>({k:'zooms',x}))];
   const sig=up.map(u=>u.k+u.x.s).join();if(sig===hitSig)return;hitSig=sig;HITS=up;
   $('hits').innerHTML=up.map((u,i)=>u.k==='zooms'?`<button class="hit ztag" data-hit="${i}" title="${esc(lead(u.k,u.x))}click to leave a note">Zoom</button>`
-    :`<button class="hit" data-hit="${i}" aria-label="${esc(lead(u.k,u.x))}leave a note" style="left:${u.box[0]}%;top:${u.box[1]}%;width:${u.box[2]}%;height:${u.box[3]}%"><span>${u.k==='texts'?TK[u.x.kind]||'Text':HL[u.k]} · click to note</span></button>`).join('');
+    :`<button class="hit" data-hit="${i}" aria-label="${esc(lead(u.k,u.x))}leave a note" style="left:${u.box[0]}%;top:${u.box[1]}%;width:${u.box[2]}%;height:${u.box[3]}%"><span>${u.k==='texts'?TK[u.x.kind]||'Text':HL[u.k]}</span></button>`).join('');
 }
 let noteOn=null;   // what the user clicked to start this note: the note is tagged with it, not with whatever else is on screen
 function startNote(text,a,b,on){
   if(!noteOk())return;noteOn=on||null;v.pause();if(a!=null){inT=a;outT=b??null;if(Math.abs(v.currentTime-a)>.05&&(v.currentTime<a||b==null||v.currentTime>b))v.currentTime=a}
   ta.value=text;grow();renderBar();boxTime();ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);
 }
-$('hits').addEventListener('click',e=>{const b=e.target.closest('[data-hit]');if(!b)return;e.stopPropagation();const u=HITS[+b.dataset.hit];if(u)startNote(lead(u.k,u.x),u.x.s,u.x.e,{k:u.k,text:u.x.text||u.x.label||''})});
+$('hits').addEventListener('click',e=>{const b=e.target.closest('[data-hit]');if(!b)return;e.stopPropagation();const u=HITS[+b.dataset.hit];
+  if(u&&u.k==='texts'&&u.x.kind==='label'){const m=(S.texts||[]).find(x=>Math.abs(x.start-u.x.s)<.05&&x.text===u.x.text);if(m)return editText(m.id,false)}   /* your own text: click to change it */
+ if(u&&u.k==='cards'&&u.x.key)return selectCard(u.x);
+ if(u&&u.k==='captions'&&(u.x.w||[]).length)return openCapLine(u.x);   /* a caption: edit its words in the Captions panel */   /* a card: select it to move, resize or delete it */
+ if(u)startNote(lead(u.k,u.x),u.x.s,u.x.e,{k:u.k,text:u.x.text||u.x.label||''})});
+// a card on the video: click it to select it. Drag it to move it, a corner to resize it (a picture keeps its shape): it
+// saves when you let go (POST /card/edit into overrides.json) and review.py bakes it into the video by itself. Reset puts
+// it back, Delete takes it out, Note leaves a note about it. Until the bake, the page draws it at its new place
+// (S.cards_pending) over its old spot.
+let csel=null;   // {x: the card (review.py screen_items), box, orig} in % of the frame
+function selectCard(x){if(!noteOk())return;v.pause();const p=(S.cards_pending||[]).find(p=>p.key===x.key&&p.box),b=p?p.box:x.box;
+  csel={x,box:b.slice(),orig:b.slice(),saved:!!p};drawCard()}
+const cmoved=()=>!!csel&&csel.box.some((q,i)=>Math.abs(q-csel.orig[i])>.2);
+function drawCard(){const L=$('clayer');if(!csel){drawPending();return}
+  const[x,y,w,h]=csel.box,[ox,oy,ow,oh]=csel.x.box,mv=cmoved(),sh=csel.box.some((q,i)=>Math.abs(q-csel.x.box[i])>.2);   // sh: not where the video has it
+  L._s=null;L.innerHTML=(sh?`<div class="cwas" style="left:${ox}%;top:${oy}%;width:${ow}%;height:${oh}%"><span>Was here</span></div>`:'')
+    +`<div class="csel" id="csel" style="left:${x}%;top:${y}%;width:${w}%;height:${h}%">${csel.x.src&&sh?`<img src="/card-img/${csel.x.src.split('/').map(encodeURIComponent).join('/')}" alt="">`:''}${['nw','ne','sw','se'].map(k=>`<i data-h="${k}"></i>`).join('')}</div>
+    <div class="cbar"><button data-c="reset"${csel.saved||mv?'':' disabled'}>Reset</button><button data-c="note">Note</button><button data-c="del">Delete</button><button data-c="cancel" class="go">Done</button></div>`}
+// cards moved or deleted that the video does not show yet: their old spot dimmed, the picture at its new place
+function drawPending(){const L=$('clayer'),t=v.currentTime,cs=((data().items||{}).cards)||[],baking=S.bake&&/waiting|working/.test(S.bake.state||'');
+  const h=(S.cards_pending||[]).map(p=>{const c=cs.find(c=>c.key===p.key);if(!c||!(c.s<=t&&t<c.e))return '';const[ox,oy,ow,oh]=c.box;
+    return `<div class="cwas" style="left:${ox}%;top:${oy}%;width:${ow}%;height:${oh}%"><span>${p.deleted?'Deleted':baking?'Updating...':'Moved'}</span></div>`
+      +(p.box&&c.src?`<div class="cnew" style="left:${p.box[0]}%;top:${p.box[1]}%;width:${p.box[2]}%;height:${p.box[3]}%"><img src="/card-img/${c.src.split('/').map(encodeURIComponent).join('/')}" alt=""></div>`:'')}).join('');
+  if(L._s!==h){L._s=h;L.innerHTML=h}}
+async function cardSave(del,box){const c=csel;if(!c)return;
+  const r=await post('/card/edit',{key:c.x.key,label:c.x.label,t:c.x.s,t_end:c.x.e,...(del?{deleted:true}:{box:box||c.box})});
+  if(!(r.id||r.ok))return toast(r.error||'That did not save.');
+  if(del){csel=null;toast(r.id?'Card deleted. Claude has this draft: it drops it in the next one.':'Card deleted.')}
+  else{c.orig=c.box.slice();c.saved=true;if(r.id)toast('Saved. Claude has this draft: it moves it in the next one.')}
+  drawCard();await load()}
+$('clayer').addEventListener('click',e=>{const b=e.target.closest('[data-c]');if(!b||!csel)return;e.stopPropagation();const k=b.dataset.c;
+  if(k==='cancel'){csel=null;drawCard()}else if(k==='del')cardSave(true);
+  else if(k==='reset'){csel.box=csel.x.box.slice();csel.saved=false;cardSave(false,csel.x.box)}
+  else if(k==='note'){const x=csel.x;csel=null;drawCard();startNote(lead('cards',x),x.s,x.e,{k:'cards',text:x.label})}});
+$('clayer').addEventListener('pointerdown',e=>{const el=e.target.closest('#csel');if(!el||!csel)return;e.preventDefault();el.setPointerCapture(e.pointerId);
+  const h=e.target.dataset.h,r=$('clayer').getBoundingClientRect(),b0=csel.box.slice(),x0=e.clientX,y0=e.clientY,keep=!!csel.x.src,ar=b0[3]/b0[2];
+  const cl=(n,a,b)=>Math.round(Math.min(b,Math.max(a,n))*10)/10;
+  el.onpointermove=ev=>{const dx=(ev.clientX-x0)/r.width*100,dy=(ev.clientY-y0)/r.height*100;let[x,y,w,ht]=b0;
+    if(!h){x=cl(x+dx,-w/2,100-w/2);y=cl(y+dy,-ht/2,100-ht/2)}
+    else{const l=h.includes('w'),t=h.includes('n');w=Math.max(4,b0[2]+(l?-dx:dx));ht=keep?w*ar:Math.max(4,b0[3]+(t?-dy:dy));
+      if(l)x=b0[0]+b0[2]-w;if(t)y=b0[1]+b0[3]-ht;[x,y,w,ht]=[x,y,w,ht].map(q=>Math.round(q*10)/10)}
+    if(v.videoHeight>v.videoWidth){   // reels: inside the safe zone (x 60-940, y 250-1440 of 1080x1920)
+      const X0=5.6,X1=87,Y0=13,Y1=75;if(w>X1-X0){w=X1-X0;if(keep)ht=w*ar}if(ht>Y1-Y0){ht=Y1-Y0;if(keep)w=ht/ar}
+      x=Math.round(Math.min(X1-w,Math.max(X0,x))*10)/10;y=Math.round(Math.min(Y1-ht,Math.max(Y0,y))*10)/10}
+    csel.box=[x,y,w,ht];const s2=$('csel');Object.assign(s2.style,{left:x+'%',top:y+'%',width:w+'%',height:ht+'%'})};
+  el.onpointerup=()=>{el.onpointermove=null;if(cmoved())cardSave(false);else drawCard()}});   // let go: saved
+document.addEventListener('keydown',e=>{if(!csel||/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName||''))return;
+  if(e.key==='Escape'){csel=null;drawCard()}if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();cardSave(true)}if(e.key==='Enter'){e.preventDefault();csel=null;drawCard()}});
 $('mini').addEventListener('click',e=>{const m=e.target.closest('[data-mk]');if(!m)return;const x=((data().items||{})[m.dataset.mk]||[])[+m.dataset.i];
   if(x&&noteOk())startNote(lead(m.dataset.mk,x),x.s,x.e,{k:m.dataset.mk,text:x.text||x.label||''});else v.currentTime=+m.dataset.s});
 // notes: the clock is always the playhead (scrub, a transcript word, a pin, a skip, a key, play), typing or not.
@@ -1513,26 +1891,38 @@ function closeBox(){noteOn=null;pics=[];showPics();ta.value='';grow();ta.blur();
 const grow=()=>{ta.style.height='auto';ta.style.height=ta.scrollHeight+'px'};
 ta.addEventListener('input',()=>{grow();boxTime()});
 ta.addEventListener('focus',()=>v.pause());
-// Anything to add?: links (pages, X posts, YouTube, GitHub, docs) and images for this video, saved at once into
-// assets.json (POST /assets). Claude puts them in first, on the "Show when I say..." words.
+// Anything to add?: links (pages, X posts, YouTube, GitHub, docs), videos and images for this video, saved at once
+// into assets.json (POST /assets for links, POST /assets/upload one file at a time). Claude puts them in first, on
+// the "Show when I say..." words.
 const LINKIC='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>';
 const CLIPIC='<svg width="16" height="16" viewBox="0 0 16 16"><path d="M13 7.5l-5.3 5.3a3.2 3.2 0 01-4.5-4.5l5.6-5.6a2.1 2.1 0 013 3l-5.5 5.5a1 1 0 01-1.5-1.5L9.9 4.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
-let addOpen=false,addMsg='',addSig='';
+let addOpen=false,addMsg='',addSig='',addBusy='';
 function renderAdds(){
-  const it=(S&&S.assets)||[],sig=JSON.stringify(it)+addOpen+addMsg;if(sig===addSig)return;addSig=sig;   // never redrawn under the typing
-  const rows=it.map((a,i)=>`<div class="arow"><span class="ath"${a.kind==='image'?` style="background-image:url('/${esc(a.src)}')"`:''}>${a.kind==='image'?'':LINKIC}</span><span class="an" title="${esc(a.kind==='image'?a.name:a.url)}">${esc(a.kind==='image'?a.name:a.url.replace(/^https?:\/\/(www\.)?/,''))}${a.say?`<i> · ${esc(a.say)}</i>`:''}</span><button data-arm="${i}" aria-label="remove" title="Remove">×</button></div>`).join('');
-  $('adds').innerHTML=rows+(addOpen?`<div class="addin"><input id="addurl" placeholder="Paste a link or an image" aria-label="a link or an image"><button id="addpic" aria-label="add an image" title="Add an image">${CLIPIC}</button><button id="addgo">Add</button></div>
+  const it=(S&&S.assets)||[],sig=JSON.stringify(it)+addOpen+addMsg+addBusy;if(sig===addSig)return;addSig=sig;   // never redrawn under the typing
+  const pic=a=>a.kind==='image'?` style="background-image:url('/${esc(a.src)}')"`:a.kind==='video'?` style="background-image:url('/${esc(a.src)}?thumb=1')"`:'';
+  const rows=it.map((a,i)=>`<div class="arow"><span class="ath"${pic(a)}>${a.kind==='link'?LINKIC:''}</span><span class="an" title="${esc(a.kind==='link'?a.url:a.name)}">${esc(a.kind==='link'?a.url.replace(/^https?:\/\/(www\.)?/,''):a.name)}${a.say?`<i> · ${esc(a.say)}</i>`:''}</span><button data-arm="${i}" aria-label="remove" title="Remove">×</button></div>`).join('');
+  $('adds').innerHTML=rows+(addBusy?`<div class="amsg">${esc(addBusy)}</div>`:'')+(addOpen?`<div class="addin"><input id="addurl" placeholder="Paste a link, a video or an image" aria-label="a link, a video or an image"><button id="addpic" aria-label="add a video or an image" title="Add a video or an image">${CLIPIC}</button><button id="addgo">Add</button></div>
     <input id="addsay" placeholder="Show when I say... (optional)" aria-label="show it when you say these words">${addMsg?`<div class="amsg">${esc(addMsg)}</div>`:''}`
-    :`<button class="obtn" id="addopen"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 2v8M2 6h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Anything to add? Images or links</button>`);
+    :`<button class="obtn" id="addopen"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 2v8M2 6h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Anything to add?</button>`);
 }
-async function addAssets(items){const r=await post('/assets',{add:items});const n=(S.assets||[]).length;if(r.items){S.assets=r.items;addMsg=r.items.length>n?'':'That one was not added. You can add up to 12 images and 20 links. Images must be under 15 MB.'}
+async function addAssets(items){const r=await post('/assets',{add:items});const n=(S.assets||[]).length;if(r.items){S.assets=r.items;addMsg=r.items.length>n?'':'That one was not added. You can add up to 50 videos, images or links.'}
   const say=$('addsay');if(say&&!addMsg)say.value='';renderAdds();const u=$('addurl');if(u)u.focus()}
+// one file at a time, streamed (a video can be 2 GB): its progress shows above the box until it is in
+async function upAssets(fs,say){
+  for(const f of fs){
+    const r=await new Promise(res=>{const x=new XMLHttpRequest();x.open('POST','/assets/upload?name='+encodeURIComponent(f.name)+'&say='+encodeURIComponent(say));
+      x.upload.onprogress=e=>{if(e.lengthComputable){addBusy=`Adding ${f.name}... ${Math.round(e.loaded/e.total*100)}%`;renderAdds()}};
+      x.onload=()=>{let j={};try{j=JSON.parse(x.responseText)}catch(e){}res(j)};x.onerror=()=>res({error:'The upload stopped. Add it again.'});x.send(f)});
+    addBusy='';if(r.items)S.assets=r.items;else addMsg=r.error||'That file was not added.';renderAdds();
+  }
+  const s2=$('addsay');if(s2&&!addMsg)s2.value='';
+}
 function addUrl(){const u=$('addurl'),us=(u?u.value:'').split(/\s+/).filter(Boolean).map(x=>/^https?:\/\//i.test(x)?x:'https://'+x);if(!us.length)return;
   if(us.some(x=>!/^https?:\/\/[^\s\/]+\.[^\s]+$/i.test(x))){addMsg='That is not a link. Paste a web address, like github.com/name/repo.';addSig='';return renderAdds()}
   const say=($('addsay')||{}).value||'';u.value='';addAssets(us.map(url=>({url,say})))}
-function addImgs(fs){const say=($('addsay')||{}).value||'',ok=[...fs].filter(f=>/^image\/(png|jpeg|gif|webp)$/.test(f.type));
-  if(ok.some(f=>f.size>15*1024*1024)){addMsg='Images under 15 MB only.';addSig='';renderAdds()}
-  Promise.all(ok.filter(f=>f.size<=15*1024*1024).map(f=>new Promise(r=>{const rd=new FileReader();rd.onload=()=>r({image:rd.result,name:f.name,say});rd.readAsDataURL(f)}))).then(xs=>xs.length&&addAssets(xs))}
+function addImgs(fs){addMsg='';const say=($('addsay')||{}).value||'',ok=[...fs].filter(f=>/^image\/(png|jpeg|gif|webp)$/.test(f.type)||/\.(mp4|mov|m4v|webm)$/i.test(f.name));
+  if(ok.length<fs.length){addMsg='Add a video (.mp4, .mov, .m4v, .webm) or an image (.png, .jpg, .gif, .webp).';addSig='';renderAdds()}
+  if(ok.length)upAssets(ok,say)}
 $('adds').onclick=e=>{const rm=e.target.closest('[data-arm]');if(rm){post('/assets',{remove:+rm.dataset.arm}).then(r=>{if(r.items){S.assets=r.items;renderAdds()}});return}
   if(e.target.closest('#addopen')){addOpen=true;renderAdds();$('addurl').focus();return}
   if(e.target.closest('#addgo'))return addUrl();if(e.target.closest('#addpic'))$('addfile').click()};
@@ -1548,9 +1938,178 @@ $('pics').onclick=e=>{const b=e.target.closest('[data-rm]');if(b){pics.splice(+b
 ta.addEventListener('paste',e=>{const fs=[...(e.clipboardData?.files||[])];if(fs.length){e.preventDefault();addFiles(fs)}});
 box.addEventListener('dragover',e=>{e.preventDefault();if(!ta.disabled)box.classList.add('drag')});box.addEventListener('dragleave',()=>box.classList.remove('drag'));
 box.addEventListener('drop',e=>{e.preventDefault();box.classList.remove('drag');if(!ta.disabled)addFiles(e.dataTransfer.files)});
+// the Text panel (Tella's Overlay > Text), on the left: the Text tool in the menu opens it, Notes stay on the right.
+// A tile adds a text in that look at the playhead (3 s, or over an i/o range); type, drag it on the video, Add text.
+// Click any text (on the video or in the list) to change its words, look, place or time, then Save, or Delete it.
+// Not sent yet: the note changes (/edit). Sent: texts.json changes with a note for Claude (/text/edit, /text/delete).
+const TSTY={plain:'Plain',outline:'Outline',box:'Box'},TEXT_SIZE=6;
+let tx=null,tsig='',tpanel=false;   // tx: the text being made or changed {style,x,y,word,start,end,edit:{id,fresh}}
+const tword=()=>{const w=$('tword');return w?w.value.trim():tx?tx.word||'':''};
+const editable=c=>!(S.sent&&!c.queued)&&c.round>=S.round;
+let tool=null;   // the left panel's tool: 'text', 'captions' or none
+function openTool(n){if(n!=='text'&&tx)setText(null);tool=n;tpanel=n==='text';document.body.classList.toggle('tside',!!n);
+  $('railtext').classList.toggle('on',n==='text');$('railcap').classList.toggle('on',n==='captions');$('railsnd').classList.toggle('on',n==='sounds');
+  $('tsht').textContent={captions:'Captions',sounds:'Sounds'}[n]||'Text';
+  $('tplus').hidden=n!=='text';$('tbody').hidden=n!=='text';$('cbody').hidden=n!=='captions';$('sbody').hidden=n!=='sounds';
+  if(n==='text')renderTextPanel();if(n==='captions')renderCapPanel();if(n==='sounds')renderSndPanel()}
+function openPanel(on){openTool(on?'text':null)}
+function setText(style,edit){
+  if(!style){tx=null}
+  else{const[a,b]=noteSpan(),t0=edit?edit.start:a;
+    tx={style,x:edit?edit.x_pct:(tx&&tx.x)||50,y:edit?edit.y_pct:(tx&&tx.y)||40,size:edit?edit.size_pct:(tx&&tx.size)||TEXT_SIZE,word:edit?edit.text:tword(),
+        start:t0,end:edit?edit.end:(b??Math.min(t0+3,v.duration||t0+3)),edit:edit||(tx&&tx.edit)||null};
+    if(!tpanel)openPanel(true);
+    if(!(v.currentTime>=tx.start&&v.currentTime<tx.end))v.currentTime=tx.start+.05}
+  document.body.classList.toggle('texting',!!tx);tsig=null;$('tbody')._tf=null;renderTextPanel();renderTexts();
+  if(tx){v.pause();setTimeout(()=>{const w=$('tword');if(w){w.focus();w.select()}},0)}}
+function textItems(){   // sent ones (texts.json) and this edit's text notes not in it yet
+  const sent=S.texts||[],ids=new Set(sent.map(x=>x.id));
+  const fresh=S.comments.filter(c=>c.add_text&&c.stage==='edit'&&!ids.has('edit'+c.round+'-'+c.id))   // with Claude, not in texts.json yet: shown, locked
+    .map(c=>({id:c.id,text:c.text,style:c.add_text.style,x_pct:c.add_text.x_pct,y_pct:c.add_text.y_pct,start:c.t,end:c.t_end??c.t+3,fresh:editable(c),locked:!editable(c)}));
+  return [...fresh,...sent.map(x=>({...x,fresh:false}))].sort((a,b)=>a.start-b.start)}
+function renderTextPanel(){
+  const l=$('tbody');if(!tpanel||!S)return;
+  if(!l._tx){l._tx=1;l.innerHTML=`<div><div class="tcap" style="margin-bottom:8px"><span>Pick a look</span></div><div class="ttiles" id="ttiles">${Object.entries(TSTY).map(([k,n])=>`<button class="ttile" data-ts="${k}" title="${n}"><span class="ts-${k}">${n}</span></button>`).join('')}</div></div><div id="tform"></div><div class="tlist" id="trows"></div>`}
+  document.querySelectorAll('#ttiles [data-ts]').forEach(b=>b.classList.toggle('on',!!tx&&b.dataset.ts===tx.style));
+  const f=$('tform'),sig=tx?(tx.edit?'e'+tx.edit.id:'n'):'';
+  if(l._tf!==sig){l._tf=sig;f.innerHTML=tx?`<div class="tnew">${tx.edit?'<b>Change this text</b>':'<b>New text</b>'}<input id="tword" placeholder="Type your text" maxlength="120" aria-label="the text" value="${esc(tx.word||'')}">
+    <div class="ttime"><b id="tspan"></b><button id="tstart" title="Start at the playhead">Start here</button><button id="tend" title="End at the playhead">End here</button></div>
+    <div class="ttime"><b>Size</b><input type="range" id="tsize" min="2" max="20" step="0.5" value="${tx.size}" aria-label="text size"></div>
+    <div class="row"><span>Drag it on the video</span></div>
+    <div class="row">${tx.edit?'<button id="tdel">Delete</button>':'<span></span>'}<button id="tcancel">Cancel</button><button id="tadd" ${tword()?'':'disabled'}>${tx.edit?'Save':'Add text'}</button></div></div>`:''}
+  if(tx&&$('tspan'))$('tspan').textContent=fmtx(tx.start)+' – '+fmtx(tx.end);
+  const all=textItems(),on=x=>tx&&tx.edit&&String(tx.edit.id)===String(x.id);
+  const row=x=>x.locked?`<div class="titem" data-tseek="${x.start}"><div><b>${esc(x.text)}</b><span>${TSTY[x.style]||x.style} · ${fmtx(x.start)}–${fmtx(x.end)} · Claude has it</span></div></div>`
+    :`<div class="titem${on(x)?' on':''}" data-tedit="${esc(String(x.id))}" data-fresh="${x.fresh?1:''}" title="Click to change it"><div><b>${esc(x.text)}</b><span>${TSTY[x.style]||x.style} · ${fmtx(x.start)}–${fmtx(x.end)}</span></div><button data-tdel="${esc(String(x.id))}" data-fresh="${x.fresh?1:''}">Delete</button></div>`;
+  const nw=all.filter(x=>x.fresh),old=all.filter(x=>!x.fresh);
+  const h=(nw.length?`<h4>Not sent yet</h4>${nw.map(row).join('')}`:'')+(old.length?`<h4>On the video</h4>${old.map(row).join('')}`:'')
+    +(all.length||tx?'':'<p class="tsub">No text yet. Pick a look to add one. Click any text on the video to change it.</p>')+bakeLine();
+  if($('trows')._h!==h){$('trows')._h=h;$('trows').innerHTML=h}}
+// where the typed texts are: drawn on the page at once, then put into the video file by a patch render (review.py bake)
+function bakeLine(){const b=(S&&S.bake)||{},live=(S.texts||[]).some(x=>!(S.texts_baked||[]).includes(x.id));
+  const m=b.state==='waiting'||b.state==='working'?'Putting your text into the video...':b.state==='failed'?`It shows here but did not go into the video: ${b.why}. Claude adds it with the next draft.`
+    :live&&b.state==='off'?(b.why==='Claude has this draft'?'Claude adds it to the draft it is making.':'It goes into the video with the next render.'):'';
+  return m?`<p class="tsub">${esc(m)}</p>`:''}
+function editText(id,fresh){const x=textItems().find(x=>String(x.id)===String(id)&&!!x.fresh===!!fresh);if(!x)return;
+  inT=outT=null;renderBar();setText(x.style,{id:x.id,fresh:x.fresh,text:x.text,x_pct:x.x_pct??50,y_pct:x.y_pct??40,size_pct:x.size_pct??TEXT_SIZE,start:x.start,end:x.end})}
+async function delText(id,fresh){const r=fresh?await post('/delete',{id:+id}):await post('/text/delete',{id});
+  if(tx&&tx.edit&&String(tx.edit.id)===String(id))setText(null);toast(r.error||'Text deleted');await load()}
+$('railtext').onclick=()=>openTool(tool==='text'?null:'text');$('railcap').onclick=()=>openTool(tool==='captions'?null:'captions');$('railsnd').onclick=()=>openTool(tool==='sounds'?null:'sounds');$('tclose').onclick=()=>openTool(null);$('tplus').onclick=()=>setText('outline');
+$('tbody').addEventListener('click',async e=>{
+  const st=e.target.closest('#ttiles [data-ts]');if(st){if(tx){tx.style=st.dataset.ts;tsig=null;renderTextPanel();renderTexts()}else setText(st.dataset.ts);return}
+  if(e.target.id==='tcancel'){setText(null);return}
+  if(e.target.id==='tadd'){saveText();return}
+  if(e.target.id==='tstart'||e.target.id==='tend'){const t=Math.round(v.currentTime*100)/100;
+    if(e.target.id==='tstart'){tx.start=t;if(tx.end<=t+.1)tx.end=Math.min(t+3,v.duration||t+3)}else{if(t<=tx.start+.1)return toast('Move the playhead after the start first');tx.end=t}
+    renderTextPanel();renderTexts();return}
+  if(e.target.id==='tdel'&&tx&&tx.edit){e.target.disabled=true;return delText(tx.edit.id,tx.edit.fresh)}
+  const d=e.target.closest('[data-tdel]');if(d){e.stopPropagation();d.disabled=true;return delText(d.dataset.tdel,!!d.dataset.fresh)}
+  const ed=e.target.closest('[data-tedit]');if(ed)return editText(ed.dataset.tedit,ed.dataset.fresh);
+  const sk=e.target.closest('[data-tseek]');if(sk){v.currentTime=+sk.dataset.tseek;v.pause()}});
+$('tbody').addEventListener('input',e=>{if(e.target.id==='tword'){tx.word=e.target.value;$('tadd').disabled=!tword();renderTexts()}
+  if(e.target.id==='tsize'){tx.size=+e.target.value;renderTexts()}});
+$('tbody').addEventListener('keydown',e=>{if(e.target.id!=='tword')return;e.stopPropagation();if(e.key==='Enter'){e.preventDefault();saveText()}if(e.key==='Escape')setText(null)});
+// the Captions panel: how many words show at a time (1, 3, 5 or a sentence) and the look (the caption presets, drawn in
+// their own look). A choice is saved for this video (POST /captions, taste "this video only", which plan.py reads) with a
+// note; the next draft shows it.
+const CGROUPS=[['1','1'],['3','3'],['5','5'],['sentence','Sentence']];
+function capTile(name,l){const fs=Math.max(11,Math.min(16,(l.size_pct||4.2)*2.8)),txt='your words here';
+  const t=l.case==='upper'?txt.toUpperCase():txt,st=`font-size:${fs}px;font-weight:${l.weight||600};color:${l.color||'#FFFFFF'};`
+    +(l.stroke?`-webkit-text-stroke:${Math.max(1,fs*.12)}px ${l.stroke_color||'#000'};paint-order:stroke fill;`:'')
+    +(l.box?`background:${l.box_color||'#000'};padding:2px 6px;border-radius:5px;`:'')+(l.shadow?'text-shadow:0 2px 6px rgba(0,0,0,.6);':'');
+  return `<span><b style="${esc(st)}">${esc(t)}</b></span>`}
+let capFocus=null;   // the caption line to put the cursor in (its start)
+function openCapLine(c){if(tool!=='captions')openTool('captions');capFocus=c?c.s:null;if(c){v.currentTime=c.s+.02;v.pause()}$('cbody')._s=null;renderCapPanel()}
+async function saveCapLine(c,text){if(!c)return;const old=capText(c).text;if(text.trim()===old.trim())return;
+  const r=await post('/captions/text',{s:c.s,w:c.w,text,old:c.text});if(!r.id)return toast(r.error||'That did not save.');
+  toast(text.trim()?'Caption changed. Submit feedback and the next draft has it.':'Caption taken out. Submit feedback and the next draft drops it.');
+  const row=$('cbody').querySelector(`.cline[data-cs="${c.s}"]`);if(row){row.classList.add('ed');if(!text.trim())row.querySelector('input').value=''}
+  $('cbody')._s=null;$('edtracks')._h=null;await load()}
+function capLinesHtml(){const cs=(data().items||{}).captions||[];if(!cs.length)return '';
+  return `<div><div class="tcap" style="margin-bottom:8px"><span>Lines</span><span>Enter saves</span></div><div class="clines">${cs.map((c,i)=>{const ct=capText(c);
+    return `<div class="cline${ct.edited?' ed':''}" data-cs="${c.s}"><button class="clt" data-cseek="${i}">${fmtx(c.s)}</button><input data-ci="${i}" value="${esc(ct.text)}" placeholder="(taken out)" aria-label="caption at ${fmtx(c.s)}"><button class="cx" data-cdel="${i}" title="Take this caption out">×</button></div>`}).join('')}</div></div>`}
+function renderCapPanel(){const b=$('cbody'),c=(S&&S.captions_ui)||{looks:{}},sig=JSON.stringify(c)+JSON.stringify(S&&S.cap_words)+((data().items||{}).captions||[]).length;
+  if(b._s===sig&&capFocus===null)return;if(b.contains(document.activeElement)&&document.activeElement.tagName==='INPUT'&&capFocus===null)return;b._s=sig;
+  b.innerHTML=`<div><div class="tcap" style="margin-bottom:8px"><span>Words at a time</span></div><div class="cgroup">${CGROUPS.map(([k,n])=>`<button data-cw="${k}"${c.words===k?' class="on"':''}>${n}</button>`).join('')}</div></div>
+    <div><div class="tcap" style="margin-bottom:8px"><span>Look</span></div><div class="clooks">${Object.entries(c.looks||{}).map(([k,l])=>`<button class="clook${c.look===k?' on':''}" data-cl="${esc(k)}">${capTile(k,l)}${esc(k[0].toUpperCase()+k.slice(1))}</button>`).join('')}</div></div>
+    <p class="tsub">Saved for this video only. Submit feedback and the next draft shows it.</p>${capLinesHtml()}`;
+  if(capFocus!==null){const row=b.querySelector(`.cline[data-cs="${capFocus}"] input`);capFocus=null;if(row){row.scrollIntoView({block:'center'});row.focus();row.select()}}}
+$('cbody').addEventListener('keydown',e=>{const i=e.target.dataset&&e.target.dataset.ci;if(i===undefined)return;e.stopPropagation();
+  if(e.key==='Enter'){e.preventDefault();saveCapLine(((data().items||{}).captions||[])[+i],e.target.value);const nx=e.target.closest('.cline').nextElementSibling;if(nx)nx.querySelector('input').focus()}
+  if(e.key==='Escape'){e.target.value=capText(((data().items||{}).captions||[])[+i]).text;e.target.blur()}});
+$('cbody').addEventListener('focusin',e=>{const i=e.target.dataset&&e.target.dataset.ci;if(i===undefined)return;const c=((data().items||{}).captions||[])[+i];if(c){v.currentTime=c.s+.02;v.pause()}});
+$('cbody').addEventListener('click',async e=>{const w=e.target.closest('[data-cw]'),l=e.target.closest('[data-cl]');
+  const sk=e.target.closest('[data-cseek]'),dl=e.target.closest('[data-cdel]'),cs=(data().items||{}).captions||[];
+  if(sk){v.currentTime=cs[+sk.dataset.cseek].s+.02;v.pause();return}
+  if(dl){return saveCapLine(cs[+dl.dataset.cdel],'')}
+  if(!w&&!l)return;
+  const r=await post('/captions',w?{words:w.dataset.cw}:{look:l.dataset.cl});if(!r.id)return toast(r.error||'That did not save.');
+  toast(w?`Captions: ${w.dataset.cw==='sentence'?'a sentence':w.dataset.cw+' word'+(w.dataset.cw==='1'?'':'s')} at a time. Submit feedback to send it.`:`Captions: the ${l.dataset.cl} look. Submit feedback to send it.`);
+  $('cbody')._s=null;await load()});
+// the Sounds panel (the sound library): each moment that can have a sound, and what plays there. Play hears a pick,
+// Default is the built-in sound, Off leaves the moment silent, and + Your own adds a sound file (it stays in the library
+// for every video). Picks are for every video (custom/sounds/choices.json, sfx.py builds the kit from them), with a note.
+const PLAY='<svg width="14" height="14" viewBox="0 0 14 14"><path d="M4 2.5v9l7.5-4.5z" fill="currentColor"/></svg>';
+let sndAudio=null,sndFor=null;
+function sndPlay(cue,c){if(sndAudio)sndAudio.pause();if(c==='none')return;sndAudio=new Audio(`/sound-preview?cue=${encodeURIComponent(cue)}&c=${encodeURIComponent(c)}`);sndAudio.play().catch(()=>toast('Could not play that sound'))}
+let sndOpen=null;   // the moment whose list of sounds is open
+const sndName=f=>f==='default'?'Built-in':f==='none'?'Off':f.replace(/\.[a-z0-9]+$/i,'');
+function renderSndPanel(){const b=$('sbody'),u=(S&&S.sounds_ui)||{cues:[],own:[]},sig=JSON.stringify(u)+sndOpen;if(b._s===sig)return;b._s=sig;
+  const groups={};u.own.forEach(f=>{const m=f.match(/^([a-z0-9]+) /i),g=m?m[1]:'Yours';(groups[g]=groups[g]||[]).push(f)});
+  const item=(cue,f,on)=>`<div class="sitem${on?' on':''}"><button class="splay sm" data-pp="${esc(cue)}" data-pv="${esc(f)}" title="Play"${f==='none'?' disabled':''}>${PLAY}</button><button class="spick" data-sc="${esc(cue)}" data-sv="${esc(f)}">${esc(sndName(f).replace(/^[a-z0-9]+ /i,m=>groups[m.trim()]?'':m))}</button>${on?'<span>Picked</span>':''}</div>`;
+  b.innerHTML=`<p class="tsub">Pick the sound for each moment. Your picks are for every video. ${u.own.length} of your own sounds are in the library.</p>`+u.cues.map(x=>{const open=sndOpen===x.cue;
+    return `<div class="srow"><div class="sh"><div><b>${esc(x.label)}</b><small>When ${esc(x.when)}</small><small class="snow">Now: <strong>${esc(sndName(x.choice))}</strong></small></div>
+      <button class="splay" data-sp="${esc(x.cue)}" title="Play what is picked"${x.choice==='none'?' disabled':''}>${PLAY}</button></div>
+      <div class="sopts"><button data-so="${esc(x.cue)}">${open?'Close':'Change'}</button><button class="sadd" data-sa="${esc(x.cue)}" title="Add a sound file for this moment">+ Your own</button></div>
+      ${open?`<div class="slist"><h4>Built in</h4>${['default','none'].map(f=>item(x.cue,f,x.choice===f)).join('')}${Object.entries(groups).map(([g,fs])=>`<h4>${esc(g[0].toUpperCase()+g.slice(1))}</h4>${fs.map(f=>item(x.cue,f,x.choice===f)).join('')}`).join('')}</div>`:''}</div>`}).join('')}
+$('sbody').addEventListener('click',async e=>{const pl=e.target.closest('[data-sp]'),pp=e.target.closest('[data-pp]'),pk=e.target.closest('[data-sv]'),ad=e.target.closest('[data-sa]'),op=e.target.closest('[data-so]');
+  if(pl){const x=((S.sounds_ui||{}).cues||[]).find(c=>c.cue===pl.dataset.sp);if(x)sndPlay(x.cue,x.choice);return}
+  if(pp)return sndPlay(pp.dataset.pp,pp.dataset.pv);
+  if(op){sndOpen=sndOpen===op.dataset.so?null:op.dataset.so;$('sbody')._s=null;renderSndPanel();return}
+  if(ad){sndFor=ad.dataset.sa;$('sndfile').click();return}
+  if(!pk)return;const cue=pk.dataset.sc,v=pk.dataset.sv;sndPlay(cue,v);
+  const r=await post('/sound',{cue,choice:v});if(!r.ok&&!r.id)return toast(r.error||'That did not save.');
+  toast(`${(((S.sounds_ui||{}).cues||[]).find(c=>c.cue===cue)||{}).label||'Sound'}: ${v==='default'?'the built-in sound':v==='none'?'off':sndName(v)}. Submit feedback so this video gets it.`);
+  $('sbody')._s=null;await load()});
+$('sndfile').onchange=e=>{const f=e.target.files[0];e.target.value='';if(!f||!sndFor)return;
+  if(f.size>10*1024*1024)return toast('Sounds under 10 MB only.');
+  const rd=new FileReader();rd.onload=async()=>{const r=await post('/sound/add',{cue:sndFor,name:f.name,data:rd.result});
+    if(!r.ok&&!r.id)return toast(r.error||'That did not save.');toast(`Added ${f.name}. It plays for that moment now.`);$('sbody')._s=null;await load();sndPlay(sndFor,f.name.replace(/[^A-Za-z0-9._ -]/g,'').trim())};rd.readAsDataURL(f)};
+async function saveText(){const text=tword();if(!tx||!text)return;
+  const look={style:tx.style,x_pct:tx.x,y_pct:tx.y,size_pct:tx.size},ed=tx.edit,t={start:Math.round(tx.start*100)/100,end:Math.round(tx.end*100)/100};
+  let r;
+  if(!ed)r=await post('/text/add',{text,...look,...t});
+  else if(ed.fresh)r=await post('/edit',{id:ed.id,text,add_text:look,t:t.start,t_end:t.end});
+  else r=await post('/text/edit',{id:ed.id,text,...look,...t});
+  if(!r||!(r.id||r.ok))return toast((r&&r.error)||'That did not save.');
+  inT=outT=null;renderBar();setText(null);toast(ed&&ed.fresh?'Text changed. Submit feedback to send it.':ed?'Text changed.':'Text added.');await load()}
+function renderTexts(){
+  const L=$('tlayer'),fs=sz=>Math.min(L.offsetWidth,L.offsetHeight)*(sz||TEXT_SIZE)/100,t=v.currentTime,edit=!!(S&&view&&view.stage==='edit');
+  $('railtext').hidden=$('railcap').hidden=$('railsnd').hidden=$('railtools').hidden=!edit;if(!edit&&tool)openTool(null);
+  if(tpanel)renderTextPanel();if(tool==='captions')renderCapPanel();if(tool==='sounds')renderSndPanel();
+  const one=(a,text,id,k)=>`<div class="tl"${id?` id="${id}"`:''}${k?` data-tclick="${esc(k)}"`:''} style="left:${a.x_pct}%;top:${a.y_pct}%;font-size:${fs(a.size_pct)}px"><span class="ts-${a.style}">${esc(text)}</span></div>`;
+  const editing=tx&&tx.edit&&tx.edit.fresh?tx.edit.id:null,moving=tx&&tx.edit&&!tx.edit.fresh?String(tx.edit.id):null,baked=S&&S.texts_baked||[];
+  const html=(edit&&!cmp?S.comments.filter(c=>c.add_text&&c.id!==editing&&c.stage===view.stage&&c.round===view.round&&c.t<=t&&t<c.t_end&&onAlt(c)):[]).map(c=>one(c.add_text,c.text,'','f'+c.id)).join('')
+    +(edit&&!cmp&&isCur()?(S.texts||[]).filter(x=>x.start<=t&&t<x.end&&!baked.includes(x.id)&&String(x.id)!==moving).map(x=>one(x,x.text,'','s'+x.id)).join(''):'')   // typed, not in the video yet
+    +(tx?one({style:tx.style,x_pct:tx.x,y_pct:tx.y,size_pct:tx.size},tword()||'Type your text','tprev'):'');
+  if(html!==tsig){tsig=html;L.innerHTML=html}}
+new ResizeObserver(()=>{tsig=null;renderTexts()}).observe($('tlayer'));
+$('tlayer').addEventListener('pointerdown',e=>{
+  const k=e.target.closest('[data-tclick]');if(k&&!tx){e.preventDefault();editText(k.dataset.tclick.slice(1),k.dataset.tclick[0]==='f');return}   // a text drawn live: click it to change it
+  const el=e.target.closest('#tprev');if(!el||!tx)return;e.preventDefault();el.setPointerCapture(e.pointerId);
+  const vert=v.videoHeight>v.videoWidth,mv=ev=>{const r=$('tlayer').getBoundingClientRect(),cl=(n,a,b)=>Math.round(Math.min(b,Math.max(a,n))*10)/10;
+    tx.x=cl((ev.clientX-r.left)/r.width*100,vert?20:12,vert?73:88);tx.y=cl((ev.clientY-r.top)/r.height*100,vert?16:8,vert?72:92);   // reels: inside the safe zone
+    el.style.left=tx.x+'%';el.style.top=tx.y+'%'};
+  el.onpointermove=mv;el.onpointerup=()=>{el.onpointermove=null;tsig=null;const w=$('tword');if(w)w.focus()}});
+// a trial reel on screen (its version picked, after Make): the note goes to that trial on the Trial reels tab, at this moment
+const onTrial=()=>!!(S&&isCur()&&!previewOn&&alt&&S.trials&&S.trials.state==='chosen'&&(viewRound().alts||[]).some(a=>a.name===alt&&a.trial));
 async function save(){const text=ta.value.trim();if(ta.disabled||(!text&&!pics.length))return;
+  if(onTrial()){if(!text)return;const[t]=noteSpan();
+    const r=await fetch('/trials',{method:'POST',body:JSON.stringify({action:'note',text,for:alt,t})});
+    toast(r.ok?`Sent to Claude for ${alt}. Its reply shows on the Trial reels tab.`:'That did not send. Try again.');closeBox();return load(true)}
   const[t,te]=noteSpan(),nv=(viewRound().alts||[]).length;
-  await post('/comment',{t,t_end:te,text,images:pics,alt:nv&&$('scope').value==='*'?'*':alt||null,on:noteOn});closeBox();await load()}
+  await post('/comment',{t,t_end:te,text,images:pics,alt:nv&&$('scope').value==='*'?'*':alt||null,on:noteOn});
+  closeBox();await load()}
 $('savebtn').onclick=save;
 ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();save()}if(e.key==='Escape'){ta.blur();inT=outT=null;noteOn=null;renderBar();boxTime()}});
 const sendOrStop=async()=>{const e=S.events[S.events.length-1];await post('/event',{type:pending()==='send'||makingEdit()||e&&e.type==='approve'?'stop':'send'});load()};
@@ -1562,6 +2121,8 @@ document.addEventListener('keydown',e=>{
   const typing=e.target.tagName==='TEXTAREA'||e.target.tagName==='INPUT'||e.target.tagName==='SELECT';
   if(!typing&&(e.metaKey||e.ctrlKey)&&!e.altKey&&!e.shiftKey&&e.key.toLowerCase()==='z'&&txEditable()&&HIST.length){e.preventDefault();return txUndo()}
   if(!typing&&(e.key==='Backspace'||e.key==='Delete')&&txSel&&txEditable()){e.preventDefault();return txOp('cut')}
+  if(!typing&&(e.metaKey||e.ctrlKey)&&!e.altKey&&/^[=+\-_]$/.test(e.key)){e.preventDefault();return setZoom(zm*(/[=+]/.test(e.key)?2:.5))}   // the timeline, not the page
+  if(!typing&&e.shiftKey&&!e.metaKey&&!e.ctrlKey&&!e.altKey&&e.key==='Z'){tfol=true;return setZoom(1)}
   if(typing||e.target.isContentEditable||e.target.closest?.('#askq')||document.documentElement.dataset.askOpen||e.metaKey||e.ctrlKey||e.altKey)return;const k=e.key;   // never while typing or while Claude's question is up
   if(k===' '){e.preventDefault();toggle()}
   else if(k==='j')v.currentTime-=5;else if(k==='l')v.currentTime+=5;

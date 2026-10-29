@@ -40,6 +40,7 @@ product video). Notes save with the edit, never in the plugin:
                                      style's rules go into its SKILL.md, skillrules.py) and
                                      show "Saved to <style>. Next video uses it."
     python3 review.py <folder> trials --propose '<json>'   after a reel's final approve: the Trial reels tab
+    python3 review.py <folder> trials --reply "..."        answer the user's notes on the made trial reels (TRIALS NOTE)
                                      {"message", "hooks": [{"text", "from"}], "versions": [{"kinds": "claude" |
                                      ["hooks"|"same"|"rewind"|"section"|"animations", ...], "line"}], "idea"?, "reply"?}.
                                      `wait` prints the user's Make (TRIALS), Skip, or question (TRIALS ASK);
@@ -86,6 +87,7 @@ import argparse
 import base64
 import contextlib
 import difflib
+import filecmp
 import hashlib
 import hmac
 import io
@@ -100,6 +102,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 import urllib.error
 import urllib.request
 import webbrowser
@@ -121,7 +124,13 @@ IMAGE_TYPES = ("png", "jpeg", "gif", "webp")
 
 
 def load(path):
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    for i in range(20):   # Windows refuses a read for the instant another thread's os.replace swaps the file in
+        try:
+            return json.loads(Path(path).read_text(encoding="utf-8"))
+        except PermissionError:
+            if i == 19:
+                raise
+            time.sleep(0.02)
 
 
 def save(path, d):
@@ -319,6 +328,134 @@ def _host(url):
     return re.sub(r"^www\.", "", urlsplit(str(url)).netloc) or str(url)
 
 
+CARD_IMG = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg")
+
+
+def card_key(c):
+    """A card's key in overrides.json (style-edit preview.py card_key): plan.py finds it again after a re-plan."""
+    return c.get("override") or f"{c.get('trigger_word', '')}@{c['start']:.3f}"
+
+
+CAP_GROUPS = {"1": 1, "3": 3, "5": 5, "sentence": 12}   # the Captions panel's words at a time (12: breaks at the sentence's own commas and stops)
+
+
+def captions_info(folder):
+    """The Captions panel: the looks (presets.py, built in then the user's) and this video's words at a time and look,
+    from taste (this video's settings win, as plan.py reads them)."""
+    from ai_editor import presets, taste
+    looks = {k: {f: v.get(f) for f in ("size_pct", "weight", "case", "color", "stroke", "stroke_color", "box", "box_color",
+                                     "shadow", "highlight_color", "words_per_caption") if v.get(f) is not None}
+             for k, v in presets.captions().items()}
+    cap = (taste.load_json(folder, count=False) or {}).get("captions") or {}
+    n = cap.get("words_per_caption")
+    return {"looks": looks, "look": cap.get("preset"),
+            "words": next((k for k, v in CAP_GROUPS.items() if v == n), str(n) if n else None)}
+
+
+def set_captions(folder, words=None, look=None):
+    """Save the Captions panel's choice for this video only (taste scope video:<name>), the way the taste skill does."""
+    from ai_editor import presets, taste
+    said = []
+    if words is not None:
+        if str(words) not in CAP_GROUPS:
+            raise ValueError("words: 1, 3, 5 or sentence")
+        n = CAP_GROUPS[str(words)]
+        taste.add("Captions", "Captions a sentence at a time" if n == 12 else f"Captions {n} word{'' if n == 1 else 's'} at a time",
+                  "captions.words_per_caption", n, scope=f"video:{folder.name}", edit=str(folder), source="review")
+        said.append("a sentence at a time" if n == 12 else f"{n} word{'' if n == 1 else 's'} at a time")
+    if look is not None:
+        if look not in presets.captions():
+            raise ValueError("look: one of the caption presets")
+        taste.add("Captions", f"Captions look: {look}", "captions.preset", look, scope=f"video:{folder.name}", edit=str(folder),
+                  source="review")
+        said.append(f"the {look} look")
+    return said
+
+
+def sfx_mod():
+    """style-edit's sfx.py (the sound kit and the sound library)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "style-edit" / "scripts"))
+    import sfx
+    return sfx
+
+
+def sounds_info():
+    """The Sounds panel: each moment that can have a sound, what plays there now, and the user's own files."""
+    sfx = sfx_mod()
+    c = sfx.choices()
+    return {"cues": [{"cue": k, "label": sfx.LABELS[k][0], "when": sfx.LABELS[k][1], "choice": c[k]} for k in sfx.LABELS],
+            "own": sfx.own_sounds()}
+
+
+SOUND_MAX_MB = 10
+
+
+def placed_raw(folder):
+    """<edit>/sounds.json's items as saved: {id, t, sound}."""
+    f = Path(folder) / "sounds.json"
+    return (load(f).get("items") or []) if f.exists() else []
+
+
+def placed_sounds(folder):
+    """placed_raw with each sound's length and waveform, for the page."""
+    items = placed_raw(folder)
+    lib = sfx_mod().library_dir()
+    return [{**x, **sound_shape(lib / x["sound"], cap=sfx_mod().MAX_OWN_S)} for x in items if isinstance(x, dict) and "sound" in x]
+
+
+_SHAPE = {}
+
+
+def sound_shape(f, cap=None, n=48):
+    """{"d": seconds, "peaks": n values 0-1}: how long a sound is and its waveform, for the timeline's sound clips
+    (a CapCut-style clip). Cached by file and time; {} when the file cannot be read."""
+    try:
+        k = (str(f), Path(f).stat().st_mtime, cap)
+    except OSError:
+        return {}
+    if k not in _SHAPE:
+        try:
+            x = sfx_mod().pcm(src=f)
+        except Exception:
+            return {}
+        if cap:
+            x = x[:int(cap * sfx_mod().SR)]
+        step = max(1, len(x) // n)
+        peaks = [max((abs(v) for v in x[i:i + step]), default=0.0) for i in range(0, step * n, step)]
+        top = max(peaks) or 1.0
+        _SHAPE[k] = {"d": round(len(x) / sfx_mod().SR, 3), "peaks": [round(v / top, 2) for v in peaks]}
+    return _SHAPE[k]
+
+
+def sound_name(src):
+    """What the timeline calls a sound: "glide-short-wind" for .sfx/own-house-glide-short-wind.wav, "whoosh-in" for .sfx/whoosh-in.wav."""
+    n = Path(str(src)).stem
+    return re.sub(r"^own-(house|skit|simple|swoop|windy|digital)-", "", n).removeprefix("own-")
+
+
+def caption_words(starts, text):
+    """A caption line's new text onto its words (overrides.json "words": {start: text}, preview.apply_overrides): one
+    word each while they last, the rest on the last word; a line with fewer words blanks the extra ones ("" deletes)."""
+    new = str(text).split()
+    if not starts:
+        raise ValueError("a caption line with no words")
+    out = {k: (new[i] if i < len(new) else "") for i, k in enumerate(starts)}
+    if len(new) > len(starts):
+        out[starts[-1]] = " ".join(new[len(starts) - 1:])
+    return out
+
+
+def card_override(folder, key, change):
+    """The video page's move, resize or delete of a card into <edit>/overrides.json (preview.py apply_overrides,
+    which plan.py runs after planning, so a re-plan keeps it). change: {"box": [x, y, w, h]} or {"deleted": True}."""
+    f = Path(folder) / "overrides.json"
+    ov = load(f) if f.exists() else {}
+    cards = ov.setdefault("cards", {})
+    cards[key] = {**(cards.get(key) or {}), **change}
+    f.write_text(json.dumps(ov, indent=1), encoding="utf-8")
+    return cards[key]
+
+
 def screen_items(folder, p):
     """What the page can click on the frame, from plan.json: each card's box and what it shows ("the github.com page"),
     the caption chunks and where captions sit, the zooms and the title texts. Boxes are % of the frame."""
@@ -345,8 +482,10 @@ def screen_items(folder, p):
         what = (names.get(c.get("src")) or ("the motion clip" if an.get("type") == "video_card" else f"the {an['type']} animation" if an.get("type") else None)
                 or names.get(w.lower()) or (f"the {c['format']}" if c.get("format") in ("logo", "browser", "post") else "the picture"))
         box = c.get("box") if isinstance(c.get("box"), list) and len(c["box"]) == 4 else [0, 0, 100, 50] if c.get("layout") == "split" else [0, 0, 100, 100]
+        src = c.get("src") if isinstance(c.get("src"), str) and Path(c["src"]).suffix.lower() in CARD_IMG else None
         cards.append({"i": i, "s": round(c["start"], 2), "e": round(c["end"], 2), "box": [round(float(v), 1) for v in box],
-                      "label": what + (f' on "{w}"' if w else "")})
+                      "label": what + (f' on "{w}"' if w else ""), "key": card_key(c),   # the page moves, resizes or deletes it
+                      **({"src": src} if src and (folder / src).is_file() else {})})
     cap = (p.get("captions") or {}).get("style") or {}
     size = float(cap.get("size_pct") or 6) * max(p.get("width") or 1, p.get("height") or 1) / (p.get("height") or 1)
     texts = []
@@ -358,14 +497,21 @@ def screen_items(folder, p):
         lines = len(items) if items else 1 + text.count("\n")
         size = float(x.get("size_pct") or 4) * (2 if items else 1.3) * max(1, lines)
         texts.append({"s": round(x["start"], 2), "e": round(x["end"], 2), "kind": x.get("kind") or "text", "text": text,
-                      "box": [float(x.get("x_pct") or 6), float(x.get("y_pct") or 10), 60, round(size, 1)] if items
+                      "box": [float(x.get("x_pct") or 50) - 30, float(x.get("y_pct") or 50) - size / 2, 60, round(size, 1)]
+                      if x.get("kind") == "label" else [float(x.get("x_pct") or 6), float(x.get("y_pct") or 10), 60, round(size, 1)] if items
                       else [13, float(x.get("y_pct") or 10), 74, round(size, 1)]})
     return {"cards": cards, "texts": texts,
-            "captions": [{"s": round(x["start"], 2), "e": round(x["end"], 2), "text": str(x.get("text") or "")}
+            # each caption line with its words' starts (overrides.json "words" keys), so the page can edit the line
+            "captions": [{"s": round(x["start"], 2), "e": round(x["end"], 2), "text": str(x.get("text") or ""),
+                          "w": [f"{w['start']:.3f}" for w in x.get("words") or [] if "start" in w]}
                          for x in (p.get("captions") or {}).get("chunks") or [] if "start" in x and "end" in x],
             "cap": None if cap.get("present") is False else {"y": float(cap.get("y_pct") or 70), "h": round(size * 2.2, 1),
                                                                "w": float(cap.get("width_pct") or 86)},
-            "zooms": [{"s": round(z["start"], 2), "e": round(z["end"], 2)} for z in p.get("zooms") or [] if "start" in z and "end" in z]}
+            "zooms": [{"s": round(z["start"], 2), "e": round(z["end"], 2)} for z in p.get("zooms") or [] if "start" in z and "end" in z],
+            # the sounds in the draft, for the timeline's Sounds row: when each is heard, and which it is
+            "sfx": [{"t": round(float(x.get("event", x["t"])), 3), "start": round(float(x["t"]), 3), "src": str(x.get("src") or ""),
+                     "placed": x.get("placed"), **sound_shape(folder / str(x.get("src") or ""))}
+                    for x in p.get("sfx") or [] if isinstance(x, dict) and "t" in x]}
 
 
 SNAP_MAX = 2 << 20   # a snapshot keeps the edit's small files; a bigger one is media, never a setting
@@ -589,6 +735,163 @@ def note_tags(plan, transcript, stage, t, te=None, on=None):
     return (words_at(transcript, t, te if te is not None else t) if not chunks else ""), card
 
 
+TEXT_STYLES = ("plain", "outline", "box")   # TikTok's and Instagram's own: white, white with a black edge, black on white
+TEXT_SIZE, TEXT_HOLD_S = 6.0, 3.0   # % of the frame's short side; seconds on screen when no range is marked
+
+
+def text_look(add):
+    """The Text tool's look on a note or a texts.json row: {style, x_pct, y_pct, size_pct}. ValueError when it is not one."""
+    try:
+        out = {"style": add["style"], **{k: round(min(100.0, max(0.0, float(add[k]))), 1) for k in ("x_pct", "y_pct")},
+               "size_pct": round(min(20.0, max(2.0, float(add.get("size_pct") or TEXT_SIZE))), 1)}
+    except (KeyError, TypeError, ValueError) as e:
+        raise ValueError("add_text takes style, x_pct and y_pct") from e
+    if out["style"] not in TEXT_STYLES:
+        raise ValueError("Text goes on the edit, in plain, outline or box.")
+    return out
+
+
+def put_texts(folder, notes):
+    """The Text tool's notes into <edit>/texts.json (plan.py typed_texts), one row per note, replaced if sent again.
+    Returns how many rows came from these notes."""
+    rows = [{"id": f"{c['stage']}{c['round']}-{c['id']}", "text": c["text"], **c["add_text"], "start": c["t"], "end": c["t_end"]}
+            for c in notes if c.get("add_text")]
+    if rows:
+        f = Path(folder) / "texts.json"
+        old = load(f).get("items") or [] if f.exists() else []
+        ids = {r["id"] for r in rows}
+        f.write_text(json.dumps({"items": [x for x in old if x.get("id") not in ids] + rows}, indent=1), encoding="utf-8")
+    return len(rows)
+
+
+def typed_labels(folder):
+    """texts.json as plan.json's "label" texts (plan.py typed_texts does the same when Claude plans)."""
+    f = Path(folder) / "texts.json"
+    keep = ("text", "style", "start", "end", "x_pct", "y_pct", "size_pct")
+    return [{"kind": "label", "size_pct": TEXT_SIZE, **{k: x[k] for k in keep if k in x}}
+            for x in ((load(f).get("items") or []) if f.exists() else [])]
+
+
+def label_key(x):
+    return (str(x.get("text")), x.get("style"), *(round(float(x.get(k) or 0), 2) for k in ("start", "end", "x_pct", "y_pct")),
+            round(float(x.get("size_pct") or TEXT_SIZE), 1))
+
+
+def baked_texts(folder, d):
+    """The texts.json rows already in the video on the page (its plan, as the round snapshot or the last bake kept it):
+    the page draws the others live over the video until they are baked in."""
+    try:
+        plan = load(Path(folder) / "review" / Path(d["snap"]).name / Path(d["plan"]).name)
+    except (KeyError, TypeError, OSError, ValueError):
+        return []
+    have = {label_key(x) for x in plan.get("texts") or [] if x.get("kind") == "label"}
+    f = Path(folder) / "texts.json"
+    return [x["id"] for x in ((load(f).get("items") or []) if f.exists() else [])
+            if label_key({"size_pct": TEXT_SIZE, **x}) in have]
+
+
+def cards_pending(folder, d):
+    """The cards moved, resized or deleted on the page (overrides.json) that the video on the page does not show yet:
+    [{"key", "box"} or {"key", "deleted"}]. The page draws them at their new place until the bake puts them in."""
+    f = Path(folder) / "overrides.json"
+    try:
+        ov = (load(f).get("cards") or {}) if f.exists() else {}
+    except (OSError, ValueError):
+        return []
+    shown = {c.get("key"): c for c in (data_of(Path(folder), d.get("data")).get("items") or {}).get("cards") or []}
+    return [{"key": k, **({"deleted": True} if o.get("deleted") else {"box": o["box"]})} for k, o in ov.items()
+            if k in shown and (o.get("deleted") or o.get("box") and [round(float(v), 1) for v in o["box"]] != shown[k]["box"])]
+
+
+def bake_ready(folder, d):
+    """Why the typed texts cannot go into this draft by themselves now (None: they can). A patch render needs the
+    edit's final render and the plan it was made from; while Claude has the round it plans them in itself."""
+    plan = Path(d.get("plan") or "-")
+    src = plan.with_name("render" + plan.stem[len("plan"):] + ".mp4")
+    return ("not the edit" if d.get("stage") != "edit" or d.get("stills") or d.get("raw") else
+            "Claude has this draft" if d.get("sent") or busy(folder) and not listening(folder) else   # waiting for notes: idle
+            "no plan" if not plan.is_file() or not plan.stem.startswith("plan") else
+            "no render to patch" if not src.is_file() or not src.with_suffix(".plan.json").is_file() else
+            "the render was finished by hand" if not render_stamped(src) else
+            "the draft is not the render" if not Path(d.get("video") or "-").is_file()
+            or Path(d["video"]).stat().st_size != src.stat().st_size else None)
+
+
+def render_stamped(src):
+    """render.mp4 is still the render edit.py made from the plan (its render.stamp.json): a patch keeps it whole. One
+    changed after (finish.sh overlays) would lose what was laid on it."""
+    try:
+        st, s = src.stat(), load(src.with_suffix(".stamp.json"))
+        return (s["size"], s["mtime_ns"]) == (st.st_size, st.st_mtime_ns)
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+BAKE = {}   # folder -> {"state": "waiting" | "working" | "done" | "failed" | "off", "why", "timer", "again"}
+BAKE_LOCK, BAKE_WAIT_S = threading.Lock(), 2.5   # seconds after the last text change before the render starts
+
+
+def bake_soon(folder):
+    """A text changed: bake the typed texts into the draft shortly (one patch render at a time per edit; a change made
+    while one runs starts another after it)."""
+    with BAKE_LOCK:
+        b = BAKE.setdefault(str(folder), {})
+        if b.get("state") == "working":
+            b["again"] = True
+            return
+        if b.get("timer"):
+            b["timer"].cancel()
+        b.update(state="waiting", why=None, timer=threading.Timer(BAKE_WAIT_S, bake, (folder,)))
+        b["timer"].daemon = True
+        b["timer"].start()
+
+
+def bake(folder, run=subprocess.run):
+    """The texts in texts.json into the draft the page shows, with no Claude: plan.json's label texts swapped for
+    them, `edit.py patch` re-renders those seconds into render.mp4, and the round's video and snapshot take it."""
+    folder, rj = Path(folder), Path(folder) / "review.json"
+    b = BAKE.setdefault(str(folder), {})
+    with BAKE_LOCK:
+        b.update(state="working", why=None, timer=None, again=False)
+    d = load(rj)
+    why = bake_ready(folder, d)
+    if why:
+        b.update(state="off", why=why)
+        return why
+    plan_f = Path(d["plan"])
+    p = load(plan_f)
+    p["texts"] = [x for x in p.get("texts") or [] if x.get("kind") != "label"] + typed_labels(folder)
+    sys.path.insert(0, str(EDIT_PY.parent))
+    from preview import apply_overrides   # the cards moved, resized or deleted on the page (overrides.json), as plan.py does
+    p = apply_overrides(p, folder, plan_f.name)
+    plan_f.write_text(json.dumps(p, indent=1), encoding="utf-8")
+    r = run([sys.executable, str(EDIT_PY), "patch", str(folder), "--plan", plan_f.name], capture_output=True, text=True)
+    if r.returncode:
+        b.update(state="failed", why=((r.stderr or r.stdout).strip().splitlines() or ["the render stopped"])[-1])
+        return b["why"]
+    src = plan_f.with_name("render" + plan_f.stem[len("plan"):] + ".mp4")
+
+    def swap(d):
+        if d.get("sent") or d["stage"] != "edit" or Path(d.get("plan") or "-") != plan_f:   # Claude took it meanwhile
+            return
+        clone(src, Path(d["video"]))
+        shutil.copy2(plan_f, folder / "review" / Path(d["snap"]).name / plan_f.name)
+        old = data_of(folder, d.get("data"))
+        d["data"] = round_data(folder, d["video"], d["stage"], d["round"], d.get("plan"))
+        if old.get("changes") is not None:   # "Changed in this draft" stays the draft's, not the bake's
+            new = data_of(folder, d["data"])
+            new["changes"] = old["changes"]
+            (folder / "review" / d["data"]).write_text(json.dumps(new), encoding="utf-8")
+        d["baked"] = d.get("baked", 0) + 1
+    update(rj, swap)
+    with BAKE_LOCK:
+        b["state"] = "done"
+        if b.get("again"):
+            b["again"] = False
+            threading.Thread(target=bake_soon, args=(folder,), daemon=True).start()
+    return None
+
+
 def on_screen(plan, t):
     """For `wait`: the caption, title and zoom on screen at t (the card is card_at's), so a note like "this word is
     wrong" or "no zoom here" names what it is about."""
@@ -712,7 +1015,7 @@ def themed(html):
 def home_url():
     """The home page's address (home.py keeps one fixed address in $AI_EDITOR_HOME/home/.server) when it
     answers, else None. Checked at most every 10 s."""
-    if time.time() - _HOME["at"] < 10:
+    if time.time() - _HOME["at"] < (1 if (_HOME.get("update") or {}).get("checking") else 10):   # a check running: follow it
         return _HOME["url"]
     f = Path(os.environ.get("AI_EDITOR_HOME", "").strip() or Path.home() / ".ai-video-editor") / "home" / ".server"
     upd = None
@@ -725,11 +1028,27 @@ def home_url():
         busy = bool(j and j.get("state") == "taken")
         # the rail's Update: a newer version the window can install (never a fork), or one installing now
         err = j.get("error") if j and j.get("state") == "failed" and time.time() - float(j.get("finished") or 0) < 300 else None
-        upd = {"latest": u.get("latest"), "busy": busy, "error": err} if busy or err or u.get("newer") and not u.get("fork") else None
+        # always there, so the rail's Updates item can say Check for updates, Checking... or Update to <version>
+        upd = {"latest": u.get("latest"), "installed": u.get("installed"), "busy": busy, "error": err,
+               "newer": bool(u.get("newer") and not u.get("fork")), "checking": bool(u.get("checking"))}
     except (OSError, ValueError, AttributeError):
         url = None
     _HOME.update(at=time.time(), url=url, update=upd)
     return url
+
+
+def ensure_home():
+    """The home page's address, starting it (home.py serve) when it is not running. None when it does not start."""
+    _HOME["at"] = 0.0
+    if not home_url():
+        subprocess.Popen([sys.executable, str(Path(__file__).with_name("home.py")), "serve", "--no-open"],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        for _ in range(40):
+            time.sleep(0.5)
+            _HOME["at"] = 0.0
+            if home_url():
+                break
+    return home_url()
 
 
 def start_update():
@@ -848,6 +1167,128 @@ def busy(folder):
         return time.time() - (folder / "review" / ".claude").stat().st_mtime < BUSY_S
     except OSError:
         return False
+
+
+REOPEN_S = 900   # one new Claude per edit this often at most (a trust prompt can hold it in its Terminal)
+
+
+def who_claude():
+    """The Claude Code running this command: {session, pid, tty, cwd, app} from the process tree (the nearest
+    `claude` above this process, and the app above that), or {} outside one (Windows has no ps: {})."""
+    pid, out = os.getpid(), {}
+    for _ in range(15):
+        try:
+            row = subprocess.run(["ps", "-o", "ppid=,tty=,comm=", "-p", str(pid)], capture_output=True, text=True,
+                                 timeout=3).stdout.split(None, 2)
+        except (OSError, subprocess.TimeoutExpired):
+            return {}
+        if len(row) < 3:
+            break
+        ppid, tty, comm = row[0], row[1], row[2].strip()
+        if not out and Path(comm).name == "claude":
+            out = {"pid": pid, "tty": "/dev/" + tty if tty not in ("?", "??") else ""}
+        elif out and ".app/" in comm:
+            out["app"] = comm.split(".app/")[0].rsplit("/", 1)[-1]
+            break
+        pid = int(ppid)
+    if not out:
+        return {}
+    try:   # the folder it runs in: `claude --resume` finds a conversation only from there
+        cwd = subprocess.run(["lsof", "-a", "-p", str(out["pid"]), "-d", "cwd", "-Fn"], capture_output=True, text=True,
+                             timeout=3).stdout
+        out["cwd"] = next((x[1:] for x in cwd.splitlines() if x.startswith("n")), "")
+    except (OSError, subprocess.TimeoutExpired):
+        out["cwd"] = ""
+    return {**out, "session": askhook.session()}
+
+
+def last_claude(folder):
+    """The Claude that last ran a command on this edit (who_claude, kept in review/.claude), or {}."""
+    try:
+        return json.loads((folder / "review" / ".claude").read_text(encoding="utf-8") or "{}")
+    except (OSError, ValueError):
+        return {}
+
+
+def claude_alive(w):
+    """That Claude Code is still running (its pid is a `claude`)."""
+    try:
+        comm = subprocess.run(["ps", "-o", "comm=", "-p", str(int(w.get("pid") or 0))], capture_output=True, text=True,
+                              timeout=3).stdout.strip()
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return False
+    return Path(comm).name == "claude"
+
+
+def claude_state(folder):
+    """The page's Claude control: {"state": "working" | "waiting" | "open" | "off", "show": its Terminal tab can come
+    to the front, "last": when it last ran a command here, "resume": the line that opens it again in any terminal}. waiting: a `wait` listens for notes; working: its process
+    runs and it ran a command lately (no process info, as on Windows: a command lately); open: running, idle."""
+    w, lis = last_claude(folder), listening(folder)
+    alive = bool(w.get("pid")) and claude_alive(w)
+    b = busy(folder)
+    st = "waiting" if lis else ("working" if b else "open") if alive else "working" if b and not w.get("pid") else "off"
+    try:
+        last = (folder / "review" / ".claude").stat().st_mtime
+    except OSError:
+        last = None
+    return {"state": st, "show": bool(alive and w.get("app") == "Terminal" and w.get("tty")), "last": last,
+            "resume": resume_cmd(w)}
+
+
+def show_claude(folder):
+    """Show Claude: its Terminal tab to the front. True when it was found."""
+    import launcher
+    w = last_claude(folder)
+    return bool(claude_alive(w) and w.get("app") == "Terminal" and launcher.show_tab(w.get("tty")))
+
+
+def stop_claude(folder):
+    """Stop: end this video's Claude Code (SIGTERM to its process). The video, notes and drafts stay; Start
+    carries on from them. True when one was running."""
+    import signal
+    w = last_claude(folder)
+    if not claude_alive(w):
+        return False
+    try:
+        os.kill(int(w["pid"]), signal.SIGTERM)
+    except (OSError, ValueError, KeyError):
+        return False
+    (folder / "review" / ".listening").unlink(missing_ok=True)
+    return True
+
+
+def resume_cmd(w):
+    """What to paste into a terminal to open that Claude's conversation again."""
+    return f"cd {shlex.quote(w['cwd'])} && claude --resume {w['session']}" if w.get("session") and w.get("cwd") else ""
+
+
+def reopen(folder, rj, force=False):
+    """Notes sent or approved with no Claude on this edit. The Claude that worked here first: still open in a
+    Terminal tab, the carry-on prompt is typed into it; closed, its conversation opens again (`claude --resume`).
+    Only with neither, a new Claude (`/ai-editor:start carry on edits/<name>`, in the library). Never while a `wait`
+    listens; force (the page's "Open a new Claude") also when a Claude worked here lately, since it may have stopped.
+    Kept on review.json as "claude": {opened, how, command, session, at} so the page says where it went."""
+    if listening(folder) or not force and (busy(folder) or time.time() - ((load(rj).get("claude") or {}).get("at") or 0) < REOPEN_S):
+        return None
+    import launcher
+    prompt, w = f"/ai-editor:start carry on edits/{folder.name}", last_claude(folder)
+    alive = claude_alive(w)
+    if alive and w.get("app") == "Terminal" and launcher.type_into(w.get("tty"), prompt):
+        r = {"opened": True, "how": "typed", "command": resume_cmd(w), "session": w.get("session")}
+    elif not alive and w.get("session") and w.get("cwd"):
+        opened, cmd = launcher.open_claude(Path(w["cwd"]), prompt, session=w["session"], resume=True)
+        r = {"opened": opened, "how": "resumed", "command": cmd, "session": w["session"]}
+    else:   # none known, or one still open where it cannot be typed into: a second copy of it would clash
+        sid = str(uuid.uuid4())
+        opened, cmd = launcher.open_claude(folder.parent.parent, prompt, session=sid)
+        r = {"opened": opened, "how": "new", "command": cmd, "session": sid}
+        if opened:
+            r["resume"] = f"cd {shlex.quote(str(folder.parent.parent))} && claude --resume {sid}"
+    r.setdefault("resume", resume_cmd(w) if r["how"] != "new" else "")
+    r["at"] = time.time()
+    update(rj, lambda d: d.update(claude=r))
+    return r
 
 
 def log_pct(path):
@@ -1105,6 +1546,16 @@ def stage_name(s, stills=False):
     return "the stills" if stills else {"cut": "the cut", "edit": "the edit"}.get(s, s)
 
 
+def resume_text(folder, d):
+    """The page's Copy for Claude: everything a new Claude Code session needs to pick this edit up when the
+    one that made it is closed (left overnight) or stopped answering."""
+    doc = Path(__file__).resolve().parents[2] / "skills" / "style-edit" / "references" / "review.md"
+    return (f'Pick up my cooked. edit "{d.get("name") or folder.name}" where I left it '
+            f'({stage_name(d.get("stage"), d.get("stills"))}, round {d.get("round")}).\n'
+            f"Read {doc}, then run this in the background and apply the notes it prints:\n"
+            f'python3 "{Path(__file__).resolve()}" "{folder.resolve()}" wait')
+
+
 # ---------------------------------------------------------------- server
 def make_handler(folder, token):
     rj = folder / "review.json"
@@ -1190,6 +1641,21 @@ def make_handler(folder, token):
                 d = load(rj)
                 d["theme"] = theme()
                 d["listening"], d["busy"] = listening(folder), busy(folder)
+                d["resume"] = resume_text(folder, d)
+                ovf = folder / "overrides.json"   # sounds taken out of the plan, waiting for the next draft
+                d["sfx_removed"] = [float(k) for k, v in ((load(ovf).get("sfx") or {}) if ovf.exists() else {}).items()
+                                    if isinstance(v, dict) and v.get("deleted")]
+                d["cap_words"] = ((load(ovf).get("words") or {}) if ovf.exists() else {})   # caption words retyped, for the next draft
+                d["placed_sounds"] = placed_sounds(folder)   # the timeline's Sounds row: the ones the user put there
+                d["sounds_ui"] = sounds_info() if d.get("stage") == "edit" else None   # the Sounds panel
+                d["captions_ui"] = captions_info(folder) if d.get("stage") == "edit" else None   # the Captions panel
+                d["texts"] = (load(folder / "texts.json").get("items") or []) if (folder / "texts.json").exists() else []   # the Text tab
+                d["texts_baked"] = baked_texts(folder, d) if d.get("stage") == "edit" else []   # the rest the page draws live
+                d["cards_pending"] = cards_pending(folder, d) if d.get("stage") == "edit" else []   # moved, not in the video yet
+                b = BAKE.get(str(folder)) or {}
+                d["bake"] = {"state": b.get("state"), "why": b.get("why")}   # putting the texts in the video
+                d["session_cmd"] = resume_cmd(last_claude(folder)) or (d.get("claude") or {}).get("resume") or ""   # Start's fallback
+                d["claude_ui"] = claude_state(folder)   # the Claude control: working, waiting, open or off
                 d["page"] = live.page_version(HTML, HTML.with_name("ask.js"))   # the tab reloads when this changes
                 d["cutcheck"] = (folder / "cut-check.html").exists()
                 d["rawvideo"] = raw_video(folder, d) is not None   # the transcript editor's preview plays the raw take
@@ -1245,10 +1711,38 @@ def make_handler(folder, token):
                 if p and p.is_file() and (r["stage"], r["round"]) == (d["stage"], d["round"]) == ("cut", d["round"]):
                     upgrade_transcript(folder, p)
                 return self.send(200, p.read_bytes() if p and p.is_file() else {})
-            if path.startswith("/assets/"):   # an image the user added (assets.py)
+            if path == "/sound-preview":   # the Sounds panel's play button: one pick of one moment, at a fixed level
+                sfx = sfx_mod()
+                cue, pick = q.get("cue", ""), q.get("c", "default")
+                if cue not in sfx.KIT or pick not in ("default", *sfx.own_sounds()):
+                    return self.send(404, {})
+                cache = Path(os.environ.get("AI_EDITOR_HOME", "").strip() or Path.home() / ".ai-video-editor") / "cache" / "sound-previews"
+                cache.mkdir(parents=True, exist_ok=True)
+                sig = hashlib.sha1(f"{cue}|{pick}|{sfx.choice_sig()}".encode()).hexdigest()[:12]
+                f = cache / f"{cue}-{sig}.wav"
+                if not f.is_file():
+                    try:
+                        sfx.preview(cue, pick, f)
+                    except (OSError, subprocess.CalledProcessError, ValueError):
+                        return self.send(404, {})
+                return self.file(f, "audio/wav")
+            if path.startswith("/card-img/"):   # a card's own picture, under this edit only: the move and resize preview
+                p = (folder / unquote(path[len("/card-img/"):])).resolve()
+                if folder.resolve() not in p.parents or p.suffix.lower() not in CARD_IMG or not p.is_file():
+                    return self.send(404, {})
+                return self.file(p, mimetypes.guess_type(p.name)[0] or "image/png")
+            if path.startswith("/assets/"):   # an image or video the user added (assets.py); ?thumb=1: a video's picture
                 p = folder / "assets" / Path(unquote(path)).name
+                if not p.is_file():
+                    return self.send(404, {})
+                if assets.kind_of(p) == "video":
+                    if q.get("thumb") == "1":
+                        import library
+                        t = library.thumb(p)
+                        return self.file(t, "image/jpeg") if t else self.send(404, {})
+                    return self.file(p, mimetypes.guess_type(p.name)[0] or "video/mp4")
                 ct = {".png": "image/png", ".gif": "image/gif", ".webp": "image/webp"}.get(p.suffix, "image/jpeg")
-                return self.file(p, ct) if p.is_file() else self.send(404, {})
+                return self.file(p, ct)
             if path.startswith("/frames/"):
                 p = folder / "review" / Path(unquote(path)).name
                 ct = {".png": "image/png", ".gif": "image/gif", ".webp": "image/webp"}.get(p.suffix, "image/jpeg")
@@ -1263,6 +1757,15 @@ def make_handler(folder, token):
                 return self.send(403, {"error": "open the page with the URL review.py printed"})
             if not askhook.same_origin(self):   # a POST from another site's page, even with the cookie
                 return self.send(403, {"error": "not from this page"})
+            if urlsplit(self.path).path == "/assets/upload":   # "Anything to add?": one video or image, streamed in
+                q = parse_qs(urlsplit(self.path).query)
+                try:
+                    n = int(self.headers.get("Content-Length") or 0)
+                    items = assets.save_stream(folder, unquote(q.get("name", [""])[0]), self.rfile, n, unquote(q.get("say", [""])[0]))
+                except ValueError as e:
+                    self.close_connection = True   # the unread body must not be taken as the next request
+                    return self.send(400, {"error": str(e)})
+                return self.send(200, {"items": items})
             try:
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
             except ValueError:
@@ -1276,6 +1779,20 @@ def make_handler(folder, token):
                 except ValueError:
                     return self.send(400, {"error": "light, dark or system"})
                 return self.send(200, {"theme": theme()})
+            if path == "/home":   # the rail with the editor's window closed: start its page (home.py serve), then go there
+                return self.send(200, {"url": ensure_home()}) if ensure_home() else self.send(503, {"error": "The editor's window did not start."})
+            if path == "/update/check":   # the rail's Check for updates: the window asks GitHub (home.py /update/check)
+                url = ensure_home()
+                if not url:
+                    return self.send(503, {"error": "The editor's window did not start."})
+                base, tok = url.split("/?t=", 1)
+                try:
+                    urllib.request.urlopen(urllib.request.Request(f"{base}/update/check?t={tok}", b"{}", method="POST",
+                                                                  headers={"Content-Type": "application/json"}), timeout=5).read()
+                except (OSError, ValueError):
+                    return self.send(503, {"error": "The editor's window did not answer."})
+                _HOME["at"] = 0.0   # the next /state reads the check
+                return self.send(200, {})
             if path == "/intro":   # "Got it" on the first-edit notice: never again
                 set_ui(intro_off=True)
                 return self.send(200, {})
@@ -1300,9 +1817,22 @@ def make_handler(folder, token):
                         return False
                     ids = sorted({i for i in body.get("chosen") or [] if isinstance(i, int) and 0 <= i < len(lr["rules"])})
                     lr.update(state="chosen" if ids and not body.get("skip") else "skipped", chosen=ids, handled=False)
+                    if to and lr["state"] == "chosen":
+                        lr["to"] = to
                     return True
+                to, lr0 = None, load(rj).get("learn") or {}
+                if body.get("new") and not body.get("skip") and lr0.get("state") == "proposed":   # "New style from this video"
+                    try:
+                        to = new_style_from(folder, body["new"])
+                    except ValueError as e:
+                        return self.send(409, {"error": str(e) or "That name is taken. Pick another."})
+                elif body.get("to") is not None:   # "Save to": one of the styles the approve listed
+                    to = next((dict(x) for x in lr0.get("styles") or [] if x["id"] == str(body["to"])), None)
+                    if to is None:
+                        return self.send(400, {"error": "pick a style from the list"})
                 return self.send(200, {}) if update(rj, lc) else self.send(409, {"error": "nothing to choose"})
             if path == "/trials":   # the Trial reels tab: {"action": "make", versions, hooks} | "skip" | "ask" + text
+                # | "note" + text, "for" (t1.., or all), "t" (seconds on that version): feedback once they are made
                 act = body.get("action")
                 try:
                     picks = {"versions": [{"kinds": trial_kinds(v.get("kinds")), "line": str(v.get("line") or "")}
@@ -1311,11 +1841,24 @@ def make_handler(folder, token):
                 except (ValueError, AttributeError) as e:
                     return self.send(400, {"error": str(e)})
                 text = str(body.get("text") or "").strip()
-                if act not in ("make", "skip", "ask") or act == "make" and not picks["versions"] or act == "ask" and not text:
-                    return self.send(400, {"error": "make takes versions, ask takes text"})
+                if act not in ("make", "skip", "ask", "note") or act == "make" and not picks["versions"] or act in ("ask", "note") and not text:
+                    return self.send(400, {"error": "make takes versions, ask and note take text"})
 
                 def tc(d):
                     t = d.get("trials") or {}
+                    if act == "note":   # once made: notes queue up, Claude takes them all on its next `wait`
+                        if t.get("state") != "chosen":
+                            return False
+                        n = len((t.get("picks") or {}).get("versions") or [])
+                        who = str(body.get("for") or "all")
+                        try:
+                            at = round(float(body["t"]), 1) if body.get("t") is not None and who != "all" else None
+                        except (TypeError, ValueError):
+                            at = None
+                        t.setdefault("notes", []).append({"text": text[:2000], "for": who if who in [f"t{i + 1}" for i in range(n)] else "all",
+                                                          "t": at, "at": now()})
+                        t["handled"] = False
+                        return True
                     if t.get("state") != "proposed" or t.get("handled") is False:   # nothing to pick, or Claude has it
                         return False
                     if act == "ask":
@@ -1351,6 +1894,185 @@ def make_handler(folder, token):
                             c["alt"] = body.get("alt") or None
                 update(rj, sc)
                 return self.send(200, {})
+            if path == "/captions":   # the Captions panel: words at a time and the look, for this video, with a note
+                d = load(rj)
+                last = d["events"][-1]["type"] if d["events"] else None
+                if d.get("stage") != "edit" or d.get("sent") and last not in ("send", "edits"):
+                    return self.send(409, {"error": "Captions change on the edit, before it is approved."})
+                try:
+                    said = set_captions(folder, body.get("words"), body.get("look"))
+                except ValueError as e:
+                    return self.send(400, {"error": str(e)})
+                if not said:
+                    return self.send(400, {"error": "captions takes words and/or look"})
+                cur = captions_info(folder)   # one Captions note per round, saying where the choice is now
+                now_said = [w for w in (("a sentence at a time" if cur["words"] == "sentence" else f"{cur['words']} word"
+                                         f"{'' if cur['words'] == '1' else 's'} at a time") if cur["words"] else None,
+                                        f"the {cur['look']} look" if cur["look"] else None) if w]
+                text = f"Captions: {' and '.join(now_said or said)}, for this video (saved to its taste). Plan again so it shows."
+                old = next((c for c in d["comments"] if (c.get("on") or {}).get("k") == "captions" and c["stage"] == d["stage"]
+                            and c["round"] >= d["round"] and editable(d, c)), None)
+                if old:
+                    def put(x):
+                        for c in x["comments"]:
+                            if c["id"] == old["id"]:
+                                c.update(text=text, edited=now())
+                    update(rj, put)
+                    return self.send(200, {**old, "text": text})
+                return self.comment({"t": 0.0, "text": text, "on": {"k": "captions", "text": "all captions"}})
+            if path in ("/sound", "/sound/add"):   # the Sounds panel: a pick for one moment, or your own file, for every video
+                sfx = sfx_mod()
+                cue = str(body.get("cue") or "")
+                if path == "/sound/add":
+                    name = re.sub(r"[^A-Za-z0-9._ -]", "", Path(str(body.get("name") or "")).name).strip()[:80]
+                    data = str(body.get("data") or "")
+                    if cue not in sfx.KIT or not name or Path(name).suffix.lower() not in sfx.SOUND_EXT or not data.startswith("data:"):
+                        return self.send(400, {"error": "Add a sound file: wav, mp3, m4a, aac, flac, ogg or opus."})
+                    try:
+                        raw = base64.b64decode(data.split(",", 1)[1], validate=True)
+                    except (ValueError, IndexError):
+                        return self.send(400, {"error": "That file did not come through."})
+                    if len(raw) > SOUND_MAX_MB * 1024 * 1024:
+                        return self.send(400, {"error": f"Sounds under {SOUND_MAX_MB} MB only."})
+                    lib = sfx.library_dir()
+                    lib.mkdir(parents=True, exist_ok=True)
+                    (lib / name).write_bytes(raw)
+                    body = {"cue": cue, "choice": name}
+                try:
+                    sfx.choose(cue, str(body.get("choice") or ""))
+                except ValueError as e:
+                    return self.send(400, {"error": str(e)})
+                d = load(rj)
+                last = d["events"][-1]["type"] if d["events"] else None
+                if d.get("stage") != "edit" or d.get("sent") and last not in ("send", "edits"):
+                    return self.send(200, {"ok": True, "sounds": sounds_info()})   # saved for the next videos; this one is done
+                info = sounds_info()   # one Sounds note per round, saying what plays where now
+                picked = [f"{x['label']} {'off' if x['choice'] == 'none' else 'is ' + x['choice']}" for x in info["cues"] if x["choice"] != "default"]
+                text = (f"Sounds for every video: {'; '.join(picked)}." if picked else "Sounds for every video: all back to the built-in ones.") \
+                    + " Plan again so they are in (custom/sounds/choices.json; sfx.py builds the kit from it)."
+                old = next((c for c in d["comments"] if (c.get("on") or {}).get("k") == "sounds" and c["stage"] == d["stage"]
+                            and c["round"] >= d["round"] and editable(d, c)), None)
+                if old:
+                    def put(x):
+                        for c in x["comments"]:
+                            if c["id"] == old["id"]:
+                                c.update(text=text, edited=now())
+                    update(rj, put)
+                    return self.send(200, {**old, "text": text, "ok": True, "sounds": info})
+                return self.comment({"t": 0.0, "text": text, "on": {"k": "sounds", "text": "all sounds"}})
+            if path in ("/sfx/add", "/sfx/remove"):   # the timeline's Sounds row: put a library sound at a moment, or take one out
+                d = load(rj)
+                last = d["events"][-1]["type"] if d["events"] else None
+                if d.get("stage") != "edit" or d.get("sent") and last not in ("send", "edits"):
+                    return self.send(409, {"error": "Sounds change on the edit, before it is approved."})
+                sfx, f = sfx_mod(), folder / "sounds.json"
+                items = placed_raw(folder)
+                try:
+                    t = round(float(body["t"]), 2)
+                    if path == "/sfx/add":
+                        name = str(body.get("sound") or "")
+                        if name not in sfx.own_sounds():
+                            raise ValueError
+                        x = {"id": secrets.token_hex(4), "t": t, "sound": name}
+                        f.write_text(json.dumps({"items": items + [x]}, indent=1), encoding="utf-8")
+                        line = f"add {Path(name).stem} at {fmt(t)}"
+                    elif body.get("placed"):
+                        if not any(i["id"] == body["placed"] for i in items):
+                            raise ValueError
+                        f.write_text(json.dumps({"items": [i for i in items if i["id"] != body["placed"]]}, indent=1), encoding="utf-8")
+                        line = f"remove {sound_name(body.get('src') or '')} at {fmt(t)}"
+                    else:   # one the plan put there: overrides.json takes it out, so a re-plan keeps it out
+                        ov_f = folder / "overrides.json"
+                        ov = load(ov_f) if ov_f.exists() else {}
+                        ov.setdefault("sfx", {})[f"{t:.3f}"] = {"deleted": True}
+                        ov_f.write_text(json.dumps(ov, indent=1), encoding="utf-8")
+                        line = f"remove {sound_name(body.get('src') or '')} at {fmt(t)}"
+                except (KeyError, TypeError, ValueError):
+                    return self.send(400, {"error": "sfx/add takes t and a library sound; sfx/remove takes t and placed or src"})
+                return self.timeline_note("sounds-timeline", "Sounds on the timeline", line,
+                                          "Plan again so they are in (sounds.json and overrides.json sfx).")
+            if path == "/captions/text":   # the Captions panel's lines or the timeline: one caption line retyped, or deleted ("")
+                d = load(rj)
+                last = d["events"][-1]["type"] if d["events"] else None
+                if d.get("stage") != "edit" or d.get("sent") and last not in ("send", "edits"):
+                    return self.send(409, {"error": "Captions change on the edit, before it is approved."})
+                try:
+                    starts = [f"{float(k):.3f}" for k in body["w"]]
+                    words = caption_words(starts, str(body.get("text") or "")[:300])
+                    old, t = str(body.get("old") or "")[:300], float(body["s"])
+                except (KeyError, TypeError, ValueError):
+                    return self.send(400, {"error": "captions/text takes s, w (its word starts) and text"})
+                ovf = folder / "overrides.json"
+                ov = load(ovf) if ovf.exists() else {}
+                ov.setdefault("words", {}).update(words)
+                ovf.write_text(json.dumps(ov, indent=1), encoding="utf-8")
+                new = " ".join(w for w in words.values() if w)
+                line = f'"{old}" at {fmt(t)} now "{new}"' if new else f'"{old}" at {fmt(t)} taken out'
+                return self.timeline_note("caption-text", "Captions retyped", line, "Plan again so they show (overrides.json words).")
+            if path == "/card/edit":   # the video page: a card moved, resized or deleted: overrides.json, baked in by itself
+                # (bake_soon); a note for Claude only while it has the round
+                d = load(rj)
+                last = d["events"][-1]["type"] if d["events"] else None
+                if d.get("stage") != "edit" or d.get("sent") and last not in ("send", "edits"):
+                    return self.send(409, {"error": "Cards change on the edit, before it is approved."})
+                key, label = str(body.get("key") or ""), str(body.get("label") or "the card")[:120]
+                try:
+                    if not re.fullmatch(r".*@\d+(\.\d+)?", key):
+                        raise ValueError
+                    if body.get("deleted"):
+                        change, what = {"deleted": True}, "Remove"
+                    else:
+                        box = [round(float(v), 1) for v in body["box"]]
+                        if len(box) != 4 or box[2] < 3 or box[3] < 3 or not all(-50 <= v <= 150 for v in box):
+                            raise ValueError
+                        change, what = {"box": box}, "Move or resize"
+                    t, te = float(body["t"]), float(body["t_end"])
+                except (KeyError, TypeError, ValueError):
+                    return self.send(400, {"error": "card/edit takes key, t, t_end and box [x, y, w, h] or deleted"})
+                card_override(folder, key, change)
+                bake_soon(folder)
+                if not d.get("sent"):
+                    return self.send(200, {"ok": True})
+                return self.comment({"t": t, "t_end": te, "text": f"{what} {label} as shown on the page: overrides.json has it "
+                                     f"(card {key}). Plan again so it shows."})
+            if path in ("/text/add", "/text/delete", "/text/edit"):   # the Text tool: texts.json changes on the spot and
+                # the page draws it at once; bake_soon puts it in the video with no Claude. Only while Claude has the
+                # round does a note tell it as well (it plans texts.json in itself)
+                d, f = load(rj), folder / "texts.json"
+                last = d["events"][-1]["type"] if d["events"] else None
+                if d.get("sent") and last not in ("send", "edits"):
+                    return self.send(409, {"error": "This draft is approved."})
+                items = (load(f).get("items") or []) if f.exists() else []
+                x = {"id": "t" + uuid.uuid4().hex[:8], "text": "", "style": "outline", "x_pct": 50, "y_pct": 40,
+                     "start": 0.0, "end": TEXT_HOLD_S} if path == "/text/add" else \
+                    next((i for i in items if i.get("id") == body.get("id")), None)
+                if not x:
+                    return self.send(404, {"error": "That text is gone already."})
+                tell = lambda text, r=x: self.comment({"t": r["start"], "t_end": r["end"], "text": text}) if d.get("sent") else \
+                    self.send(200, {"ok": True, "id": r["id"]})
+                if path == "/text/delete":
+                    f.write_text(json.dumps({"items": [i for i in items if i is not x]}, indent=1), encoding="utf-8")
+                    bake_soon(folder)
+                    return tell(f'Remove the on-screen text "{x["text"]}".')
+                text = str(body.get("text") or x["text"]).strip()[:120]
+                if not text:
+                    return self.send(400, {"error": "Type the text first."})
+                try:
+                    new = {**x, "text": text, **text_look({**x, **{k: body[k] for k in ("style", "x_pct", "y_pct", "size_pct") if k in body}})}
+                    if body.get("start") is not None:
+                        new["start"] = round(max(0.0, float(body["start"])), 2)
+                        new["end"] = round(max(new["start"] + 0.1, float(body.get("end") or new["start"] + TEXT_HOLD_S)), 2)
+                except (ValueError, TypeError) as e:
+                    return self.send(400, {"error": str(e) or "no time"})
+                f.write_text(json.dumps({"items": [new if i is x else i for i in items] + ([new] if path == "/text/add" else [])},
+                                        indent=1), encoding="utf-8")
+                bake_soon(folder)
+                if path == "/text/add":
+                    return tell(f'Add the on-screen text "{text}": texts.json has it. Plan again so it shows.', new)
+                what = [w for w, k in (("words", "text"), ("look", "style"), ("place", "x_pct"), ("place", "y_pct"),
+                                       ("size", "size_pct"), ("time", "start")) if new.get(k) != x.get(k)]
+                return tell(f'Change the on-screen text "{x["text"]}" ({", ".join(dict.fromkeys(what)) or "no change"}): '
+                            f'texts.json has it now as "{text}". Plan again so it shows.', new)
             if path == "/delete":
                 def rm(d):
                     d["comments"] = [c for c in d["comments"] if not (c["id"] == body.get("id") and editable(d, c))]
@@ -1371,33 +2093,11 @@ def make_handler(folder, token):
                     return self.send(400, {})
                 if body["type"] == "approve" and load(rj).get("raw"):   # nothing to approve before the first cut
                     return self.send(409, {"error": "The cut is not ready yet."})
-                if body["type"] == "stop" and load(rj).get("raw"):   # the first cut cannot be stopped from here
-                    return self.send(409, {"error": "The first cut is on its way."})
                 if body["type"] == "stop":   # the round's notes open again; `status` tells Claude to stop
-                    def st(d):
-                        last = d["events"][-1]["type"] if d["events"] else None
-                        # an approve (even the final one) can be taken back too: the draft opens for notes again
-                        if last == "approve" or d.get("sent") and (last in ("send", "edits") or making_edit(d)):
-                            e = d["events"][-1]
-                            for ev in d["events"]:   # a send or approve `wait` has not taken yet is taken back
-                                ev["handled"] = True
-                            # stop undoes the edits, but only over the files /edits wrote: never over Claude's later change
-                            if e["type"] == "edits" and e.get("sha") == files_sha(folder) and (folder / "spans.prev.json").exists():
-                                save(folder / "spans.json", load(folder / "spans.prev.json"))
-                                if (folder / "keep.prev.json").exists():
-                                    save(folder / "keep.json", load(folder / "keep.prev.json"))
-                            d["events"].append({"type": "stop", "stage": d["stage"], "round": d["round"],
-                                                "at": now(), "handled": True})
-                            d["sent"], d["stopped"] = False, now()
-                            for c in d["comments"]:   # notes queued meanwhile join the reopened round
-                                if c.pop("queued", None):
-                                    c["round"] = d["round"]
-                            for x in d.get("activity", []):
-                                x["done"] = True
-                    update(rj, st)
-                    drop_spec(folder)
-                    return self.send(200, {})
+                    err = stop_round(folder)
+                    return self.send(409, {"error": err}) if err else self.send(200, {})
                 style = style_label(folder) if body["type"] == "approve" else None
+                choices = style_choices(folder) if body["type"] == "approve" else None
 
                 def ev(d):
                     if d.get("sent") and d["events"] and d["events"][-1]["type"] == "edits":
@@ -1407,7 +2107,7 @@ def make_handler(folder, token):
                     d["sent"] = True
                     d.pop("stopped", None)
                     if body["type"] == "approve" and (d["stage"] == "edit" and not d.get("stills") or d.get("final")):   # the finished video
-                        d["learn"] = {"state": "reading" if session_notes(d) else "none", "style": style}
+                        d["learn"] = {"state": "reading" if session_notes(d) else "none", "style": style, "styles": choices}
                     elif body["type"] == "approve" and d["stage"] == "cut":
                         prepared_steps(folder, d)
                     return True
@@ -1415,8 +2115,31 @@ def make_handler(folder, token):
                     return self.send(409, {"error": "Claude is applying your transcript changes."})
                 if body["type"] == "send" and load(rj).get("stills"):   # notes on the stills: that render is not the one
                     drop_spec(folder)
+                with contextlib.suppress(Exception):   # the notes are saved either way
+                    reopen(folder, rj)   # no Claude on this edit any more: a new one takes the notes
                 return self.send(200, {})
+            if path == "/claude":   # Start Claude: carry on in the Claude that worked here, else a new one
+                return self.send(200, reopen(folder, rj, force=True) or {})
+            if path == "/claude/show":   # Show Claude: its Terminal tab to the front
+                return self.send(200, {"shown": show_claude(folder)})
             self.send(404, {})
+
+        def timeline_note(self, k, title, line, tail):
+            """One note per round for the timeline's changes of a kind, a line added for each change."""
+            d = load(rj)
+            old = next((c for c in d["comments"] if (c.get("on") or {}).get("k") == k and c["stage"] == d["stage"]
+                        and c["round"] >= d["round"] and editable(d, c)), None)
+            lines = ((old or {}).get("lines") or []) + [line]
+            text = f"{title}: {'; '.join(lines)}. {tail}"
+            if old:
+                def put(x):
+                    for c in x["comments"]:
+                        if c["id"] == old["id"]:
+                            c.update(text=text, lines=lines, edited=now())
+                update(rj, put)
+                return self.send(200, {**old, "text": text, "lines": lines})
+            # lines go in with the note: set after the reply, a change sent right after it read a note without them
+            self.comment({"t": 0.0, "text": text, "on": {"k": k, "text": title.lower()}, "lines": lines})
 
         def comment(self, body):
             text = str(body.get("text", "")).strip()
@@ -1440,6 +2163,16 @@ def make_handler(folder, token):
             grab(src["video"], t, folder / "review" / frame)
             images = askhook.save_images(folder / "review", imgs, f"r{d['stage']}{d['round']}-c{cid}")
             on = body.get("on") if isinstance(body.get("on"), dict) else None
+            add = body.get("add_text")
+            if add is not None:   # the Text tool: the note's words go on screen as typed, in one of TikTok's three looks
+                try:
+                    add = text_look(add)
+                except ValueError as e:
+                    return self.send(400, {"error": str(e)})
+                if not text or d["stage"] != "edit":
+                    return self.send(400, {"error": "Text goes on the edit, in plain, outline or box."})
+                if te is None:
+                    te = t + TEXT_HOLD_S
             words, card = note_tags(d.get("plan"), src.get("transcript"), d["stage"], t, te, on)
             c = {"id": cid, "round": d["round"] + queued, "stage": d["stage"], "t": round(t, 2), "alt": alt,
                  "t_end": round(te, 2) if te is not None else None, "text": text, "words": words, "card": card,
@@ -1448,8 +2181,12 @@ def make_handler(folder, token):
                 c["keep"] = True
             if queued:
                 c["queued"] = True
+            if add:
+                c["add_text"] = add
             if on:
                 c["on"] = {"k": str(on.get("k") or ""), "text": str(on.get("text") or "")[:300]}
+                if isinstance(body.get("lines"), list):   # a timeline note's running lines, saved with it before the reply
+                    c["lines"] = [str(x) for x in body["lines"]]
             update(rj, lambda d: d["comments"].append(c))
             return self.send(200, c)
 
@@ -1503,6 +2240,11 @@ def make_handler(folder, token):
                         new["keep"] = True
             if "alt" in body:
                 new["alt"] = body["alt"] or None
+            if body.get("add_text") is not None and c.get("add_text"):   # the Text tab's Save: a new look or place
+                try:
+                    new["add_text"] = text_look(body["add_text"])
+                except ValueError as e:
+                    return self.send(400, {"error": str(e)})
             if "images" in body:
                 new["images"] = askhook.save_images(folder / "review", body["images"] or [], f"r{c['stage']}{c['round']}-c{c['id']}",
                                             keep=c.get("images") or [])
@@ -1514,7 +2256,12 @@ def make_handler(folder, token):
                     t = round(float(body["t"]), 2)
                 except (TypeError, ValueError):
                     return self.send(400, {"error": "no time"})
-                if c["t_end"] is not None:
+                if body.get("t_end") is not None:   # a new span (the Text tab's i/o)
+                    try:
+                        new["t_end"] = round(max(t + 0.1, float(body["t_end"])), 2)
+                    except (TypeError, ValueError):
+                        return self.send(400, {"error": "no time"})
+                elif c["t_end"] is not None:
                     new["t_end"] = round(t + c["t_end"] - c["t"], 2)
                 new["t"], new["frame"] = t, f"r{c['stage']}{c['round']}-c{c['id']}-{int(time.time() * 1000) % 10 ** 8}.jpg"
                 grab(src["video"], t, folder / "review" / new["frame"])
@@ -1602,11 +2349,9 @@ def asker(folder, started):
         own = session_of(folder) or started
         if own:
             return folder.name if sid == own else None
-        try:   # no session known here: anyone's, unless that session is working on another edit
-            others = [f for f in folder.parent.iterdir() if f != folder and f.is_dir()]
-        except OSError:
-            others = []
-        return None if sid and any(session_of(f) == sid for f in others) else folder.name
+        # no session known here: only a question with no session. A Claude on this video names it (askhook's
+        # asking_edit), so a session that never touched it is another project's
+        return None if sid else folder.name
     return owner
 
 
@@ -2083,6 +2828,39 @@ def noted(folder):
         pass
 
 
+def stop_round(folder):
+    """Stop: the round Claude has goes back to the user, its notes open again, and `status` tells Claude to stop.
+    The review page's Stop and the home window's sidebar Stop (home.py /stop with an edit). Returns an error or None."""
+    folder = Path(folder)
+    rj = folder / "review.json"
+    if load(rj).get("raw"):   # the first cut cannot be stopped from here
+        return "The first cut is on its way."
+
+    def st(d):
+        last = d["events"][-1]["type"] if d["events"] else None
+        # an approve (even the final one) can be taken back too: the draft opens for notes again
+        if last == "approve" or d.get("sent") and (last in ("send", "edits") or making_edit(d)):
+            e = d["events"][-1]
+            for ev in d["events"]:   # a send or approve `wait` has not taken yet is taken back
+                ev["handled"] = True
+            # stop undoes the edits, but only over the files /edits wrote: never over Claude's later change
+            if e["type"] == "edits" and e.get("sha") == files_sha(folder) and (folder / "spans.prev.json").exists():
+                save(folder / "spans.json", load(folder / "spans.prev.json"))
+                if (folder / "keep.prev.json").exists():
+                    save(folder / "keep.json", load(folder / "keep.prev.json"))
+            d["events"].append({"type": "stop", "stage": d["stage"], "round": d["round"],
+                                "at": now(), "handled": True})
+            d["sent"], d["stopped"] = False, now()
+            for c in d["comments"]:   # notes queued meanwhile join the reopened round
+                if c.pop("queued", None):
+                    c["round"] = d["round"]
+            for x in d.get("activity", []):
+                x["done"] = True
+    update(rj, st)
+    drop_spec(folder)
+    return None
+
+
 def drop_spec(folder):
     """Stop the background render and remove its files: notes were sent, the plan changed, or another target."""
     folder = Path(folder)
@@ -2091,7 +2869,7 @@ def drop_spec(folder):
             pid = json.loads(meta.read_text(encoding="utf-8")).get("pid")
         except (OSError, ValueError):
             pid = None
-        if pid and alive(pid):
+        if pid and pid != os.getpid() and alive(pid):   # never itself: taskkill /T on Windows ended the caller (edit.py demo)
             try:
                 if os.name == "nt":
                     subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True)
@@ -2208,18 +2986,25 @@ def cmd_wait(folder, poll=1.0):
         card = f" [card {k['i']} {k['kind']} '{k['trigger_word'] or ''}']" if k else ""
         card += on_screen(r.get("plan") or d.get("plan"), c["t"]) if e["stage"] == "edit" else ""
         keep = f" [keep as a rule for {style_label(folder)}]" if c.get("keep") else ""
+        keep += f" [add text: {c['add_text']['style']}]" if c.get("add_text") else ""
         print(f"#{c['id']} {span} ({c['t']}s){ver}{card}: {c['text']}{keep}\n    said: \"{c['words']}\""
               f"\n    frame: {folder / 'review' / c['frame']}"
               + "".join(f"\n    image: {folder / 'review' / x}" for x in c.get("images") or []))
+    typed = put_texts(folder, cs)
+    if typed:
+        print(f"texts: {folder / 'texts.json'} ({typed} on-screen text{'' if typed == 1 else 's'} the user typed with the Text tool, "
+              "the notes marked [add text]. plan.py puts every one in plan.json as typed: plan again and render. "
+              "Never reword, restyle or move them; a later note about one edits its row in texts.json.)")
     added = assets.load(folder)
     if added:   # New video's "Add images or links" and the editor's "Anything to add?": they go in first
-        print(f"assets: {folder / 'assets.json'} ({len(added)} image{'' if len(added) == 1 else 's'} or link{'' if len(added) == 1 else 's'} the user added. "
-              "Each one goes in first, as a card on its say words, before anything searched; one not in images.json or "
-              "visuals.json yet is new.)")
+        print(f"assets: {folder / 'assets.json'} ({len(added)} video{'' if len(added) == 1 else 's'}, image{'' if len(added) == 1 else 's'} "
+              f"or link{'' if len(added) == 1 else 's'} the user added. "
+              "Each one goes in first, as a card on its say words (a video as a video_card), before anything searched; one "
+              "not in images.json or visuals.json yet is new.)")
     if e["type"] == "approve" and d.get("learn"):
         print(learn_prompt(folder, d))
         if d.get("vertical") and not d.get("trials"):   # a finished reel: offer re-cuts for trial reels
-            print(f"TRIALS: a reel. Offer trial reels on the page's Trial reels tab: find spare hooks (a retake of the "
+            print(f"TRIALS: a reel. Offer trial reels on the page's Trial reels tab (the trial-reels skill): find spare hooks (a retake of the "
                   f"opener, a strong later line), plan 2-4 versions that each look like a different video, then\n"
                   f"  python3 {Path(__file__).resolve()} {folder} trials --propose '<json>'   and `wait` for the pick.")
     elif cs:
@@ -2263,6 +3048,48 @@ def shown_style(sp):
     from ai_editor import styleskill
     n = styleskill.display(sp)
     return "New format" if n.startswith("@links-") else n
+
+
+def style_choices(folder):
+    """The learn panel's Save to list: this video's style first, then every saved style, each with its rule count.
+    id is the style.json path ("" = My style)."""
+    try:
+        from ai_editor import styleskill
+        here = edit_style(folder)
+        key = lambda sp: str(Path(sp).resolve()) if sp else ""
+        out, seen = [], set()
+        for sp in [here] + [x for x, _ in styleskill.saved()]:
+            if key(sp) in seen:
+                continue
+            seen.add(key(sp))
+            try:
+                n = len(styleskill.learned(styleskill.scope(sp)))
+            except Exception:
+                n = 0
+            out.append({"id": key(sp), "name": shown_style(sp), "rules": n, "here": sp is here, "mine": sp is None})
+        return out
+    except Exception:
+        return [{"id": "", "name": "My style", "rules": 0, "here": True, "mine": True}]
+
+
+def new_style_from(folder, name):
+    """"New style from this video": a copy of the style the edit used (home.new_own_style, own: true), named.
+    Returns the Save to entry for it. ValueError when the name is empty or taken."""
+    import library
+    from home import new_own_style
+    name = " ".join(str(name or "").split())[:40]
+    if not name:
+        raise ValueError("Give the new style a name.")
+    sp = edit_style(folder)
+    try:
+        start = json.loads(Path(sp).read_text(encoding="utf-8")) if sp else None
+    except (OSError, ValueError):
+        start = None
+    if start:
+        start = {k: v for k, v in start.items() if k not in ("handle", "own", "name")}
+    sid = new_own_style(library.path(), name, start=start)
+    p = library.path() / "creator-teardowns" / sid.lstrip("@") / "style.json"
+    return {"id": str(p.resolve()), "name": name, "rules": 0, "here": False, "mine": False, "new": True}
 
 
 def style_label(folder):
@@ -2331,6 +3158,9 @@ def learn_chosen(folder, d):
         print("LEARN: the user pressed Not now. Nothing is saved; say nothing more about it.")
         return "learn"
     rules = [lr["rules"][i] for i in lr["chosen"]]
+    to = lr.get("to")
+    if to and not to.get("here"):   # Save to: learn --done saves them there
+        lr = {**lr, "style": to["name"] + (f" (a new style, a copy of {lr['style']})" if to.get("new") else "")}
     print(f"LEARN: the user ticked {len(rules)} rule{'s' if len(rules) != 1 else ''} for {lr['style']}:")
     for r in rules:
         print(f"  - [{r['section']}] {r['rule']}" + (f" ({r['set']})" if r.get("set") else ""))
@@ -2382,6 +3212,10 @@ def learn_done(folder, summary):
     style = shown_style(sp)
     from ai_editor import skillrules
     tg = skillrules.target(folder)
+    to = lr.get("to")
+    if to and not to.get("here"):   # Save to: another saved style, or a new one made from this video's style
+        sp = Path(to["id"]) if to["id"] else None
+        style, tg = to["name"], {"kind": "settings"}
     saved = []   # (rule, status, kind, ref) for the receipts
     if tg["kind"] == "skill":   # a skill style: its skill made the edit, so the rules go into its SKILL.md
         if not tg["path"]:
@@ -2480,11 +3314,37 @@ def trials_propose(folder, raw):
     print(f"{len(vs)} trial reel{'s' if len(vs) != 1 else ''} on the page; run `wait` for the user's pick")
 
 
+def trials_reply(folder, text):
+    """Claude's answer to the notes on the made trial reels: on every note not answered yet, shown under them."""
+    text = str(text or "").strip()
+    if not text:
+        sys.exit("--reply takes the words to show")
+
+    def f(d):
+        ns = [x for x in (d.get("trials") or {}).get("notes") or [] if "reply" not in x]
+        if not ns:
+            sys.exit("no trial reel notes to answer")
+        for x in ns:
+            x["reply"] = ""
+        ns[-1]["reply"] = text
+    update(folder / "review.json", f)
+    print("reply on the Trial reels tab")
+
+
 def trials_chosen(folder, d):
     """What `wait` prints for the Trial reels tab: Make, Skip, or a question for Claude."""
     t, me = d["trials"], f"python3 {Path(__file__).resolve()} {folder}"
     if t["state"] == "skipped":
         print("TRIALS: the user pressed Skip trial reels. Make none; say nothing more about it.")
+    elif t["state"] == "chosen" and any("reply" not in x for x in t.get("notes") or []):   # notes on the made trials
+        print("TRIALS NOTE: the user's notes on the trial reels:")
+        for x in (x for x in t["notes"] if "reply" not in x):
+            print(f"  {'all of them' if x['for'] == 'all' else x['for']}" + (f" at {x['t']:.1f}s" if x.get("t") is not None else "")
+                  + f": {x['text']}")
+        print(f"Change those versions (the trial-reels skill), render each again and put it back under the same name:\n"
+              f"  {me} alt t1 --video <t1.mp4> --trial\nThen answer on the tab, one or two lines on what changed:\n"
+              f"  {me} trials --reply \"...\"   and `wait` again. A note about how every trial reel should be is taste "
+              f"(the taste skill) too.")
     elif t["state"] == "proposed":   # a question from the Ask Claude box
         print(f"TRIALS ASK: {t['asks'][-1]['text']}\nAnswer on the page: {me} trials --propose '<json>' with the "
               f"updated plan and \"reply\": one or two lines on what you changed. Then `wait` again.")
@@ -2498,7 +3358,8 @@ def trials_chosen(folder, d):
         hs = [t["hooks"][i]["text"] for i in pk["hooks"] if i < len(t["hooks"])]
         if hs:
             print("  spare hooks to use: " + "; ".join(f'"{h}"' for h in hs))
-        print(f"You pick the lines, sections, hooks and overlays. Put each render on the page as it lands:\n"
+        print(f"Follow the trial-reels skill (the type first, then versions that look different). You pick the lines, "
+              f"sections, hooks and overlays. Put each render on the page as it lands:\n"
               f"  {me} alt t1 --video <t1.mp4> --trial")
     return "trials"
 
@@ -2628,6 +3489,51 @@ def demo_timings(tmp):
     assert not list(f.glob("render.spec*")), "drop_spec leaves nothing behind"
 
 
+def demo_bake(tmp):
+    """bake: the typed texts go into plan.json and the draft by a patch render (faked here), with no Claude."""
+    f = tmp / "bake"
+    (f / "review" / "snap-edit1").mkdir(parents=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=64x36:r=30:d=2", "-c:v", "libx264",
+                    "-pix_fmt", "yuv420p", str(f / "render.mp4")], check=True)
+    plan = {"fps": 30, "durationInFrames": 60, "width": 64, "height": 36, "texts": [{"kind": "title", "text": "T", "start": 0, "end": 1}]}
+    for p in (f / "plan.json", f / "render.plan.json", f / "review" / "snap-edit1" / "plan.json"):
+        p.write_text(json.dumps(plan), encoding="utf-8")
+    clone(f / "render.mp4", f / "review" / "v-edit1.mp4")
+    save(f / "review.json", {"stage": "edit", "round": 1, "sent": False, "stills": False, "events": [], "comments": [],
+                             "plan": str(f / "plan.json"), "snap": "snap-edit1", "video": str(f / "review" / "v-edit1.mp4")})
+    (f / "texts.json").write_text(json.dumps({"items": [{"id": "t1", "text": "hi", "style": "box", "start": 0.5, "end": 1.5,
+                                                         "x_pct": 50, "y_pct": 30, "size_pct": 8}]}), encoding="utf-8")
+    d = load(f / "review.json")
+    stamp = lambda: (f / "render.stamp.json").write_text(json.dumps({"size": (f / "render.mp4").stat().st_size,
+                                                                     "mtime_ns": (f / "render.mp4").stat().st_mtime_ns}), encoding="utf-8")
+    assert bake_ready(f, d) == "the render was finished by hand", "no stamp: never patched over"
+    assert bake(f) == "the render was finished by hand" and BAKE[str(f)]["state"] == "off"
+    stamp()
+    assert baked_texts(f, d) == [] and bake_ready(f, d) is None, bake_ready(f, d)
+    ran = []
+
+    def fake(cmd, **k):   # the patch render: blue frames
+        ran.append(cmd[2:])
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=blue:s=64x36:r=30:d=2", "-c:v", "libx264",
+                        "-pix_fmt", "yuv420p", str(f / "render.mp4")], check=True)
+        shutil.copy2(f / "plan.json", f / "render.plan.json")
+        stamp()
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    (f / "overrides.json").write_text(json.dumps({"cards": {"repo@0.500": {"box": [5, 10, 40, 20]}}}), encoding="utf-8")
+    p = load(f / "plan.json")
+    p["cards"] = [{"start": 0.5, "end": 1.5, "trigger_word": "repo", "box": [30, 60, 40, 20]}]
+    (f / "plan.json").write_text(json.dumps(p), encoding="utf-8")
+    assert bake(f, run=fake) is None and ran == [["patch", str(f), "--plan", "plan.json"]], ran
+    assert load(f / "plan.json")["cards"][0]["box"] == [5, 10, 40, 20], "the moved card is baked in"
+    p = load(f / "plan.json")
+    assert [x["kind"] for x in p["texts"]] == ["title", "label"] and p["texts"][1]["size_pct"] == 8, p["texts"]
+    d = load(f / "review.json")
+    assert d["baked"] == 1 and baked_texts(f, d) == ["t1"] and BAKE[str(f)]["state"] == "done", d
+    assert filecmp.cmp(f / "render.mp4", d["video"], shallow=False), "the round's video is the patched render"
+    update(f / "review.json", lambda d: d.update(sent=True))
+    assert bake(f, run=fake) == "Claude has this draft" and len(ran) == 1
+
+
 def demo():
     import contextlib
     import io
@@ -2635,6 +3541,45 @@ def demo():
     tmp = Path(tempfile.mkdtemp(prefix="review_demo_"))
     os.environ["AI_EDITOR_HOME"] = str(tmp / "home")   # start records the folder in the library index there
     demo_timings(tmp)
+    demo_bake(tmp)
+    # notes sent with no Claude on the edit: a new one opens in the library to carry on; never twice, never over a listener
+    import launcher
+    opened = []
+    launcher.open_claude = lambda folder, prompt, session=None, resume=False: (
+        opened.append((folder, prompt, resume)) or True, "claude '" + prompt + "'")
+    typed, keep_type = [], launcher.type_into
+    launcher.type_into = lambda tty, text: typed.append((tty, text)) or tty == "/dev/ttys-open"
+    rf = tmp / "lib" / "edits" / "solo"
+    (rf / "review").mkdir(parents=True)
+    save(rf / "review.json", {})
+    r0 = reopen(rf, rf / "review.json")
+    assert r0["opened"] and r0["how"] == "new" and opened == [(tmp / "lib", "/ai-editor:start carry on edits/solo", False)]
+    assert re.fullmatch(r"cd \S+ && claude --resume [0-9a-f-]{36}", r0["resume"]) and r0["session"] in r0["resume"], r0
+    assert reopen(rf, rf / "review.json") is None and len(opened) == 1, "one per 15 min"
+    (rf / "review" / ".listening").touch()
+    assert reopen(rf, rf / "review.json", force=True) is None, "a listening Claude takes the notes"
+    (rf / "review" / ".listening").unlink()
+    (rf / "review" / ".claude").touch()
+    update(rf / "review.json", lambda d: d.pop("claude"))
+    assert reopen(rf, rf / "review.json") is None and reopen(rf, rf / "review.json", force=True) and len(opened) == 2, "busy: only the button"
+    # the Claude that worked here goes first: open in a Terminal tab, the prompt is typed there; closed, it resumes
+    me = {"pid": os.getpid(), "tty": "/dev/ttys-open", "app": "Terminal", "cwd": str(tmp), "session": "s-1"}
+    keep_alive = globals()["claude_alive"]
+    globals()["claude_alive"] = lambda w: w.get("pid") == os.getpid()
+    (rf / "review" / ".claude").write_text(json.dumps(me), encoding="utf-8")
+    r1 = reopen(rf, rf / "review.json", force=True)
+    assert r1["how"] == "typed" and typed[-1] == ("/dev/ttys-open", "/ai-editor:start carry on edits/solo") and len(opened) == 2, r1
+    assert r1["resume"] == f"cd {shlex.quote(str(tmp))} && claude --resume s-1", r1
+    (rf / "review" / ".claude").write_text(json.dumps({**me, "pid": 999999999}), encoding="utf-8")
+    r2 = reopen(rf, rf / "review.json", force=True)
+    assert r2["how"] == "resumed" and opened[-1] == (tmp, "/ai-editor:start carry on edits/solo", True), (r2, opened[-1])
+    (rf / "review" / ".claude").write_text(json.dumps({**me, "app": "Cursor"}), encoding="utf-8")
+    assert reopen(rf, rf / "review.json", force=True)["how"] == "new", "open in an app that cannot be typed into: a new one"
+    globals()["claude_alive"], launcher.type_into = keep_alive, keep_type
+    w = who_claude()   # this demo's own process tree: a `claude` above it only when Claude Code runs it
+    assert not w or (w["pid"] and "session" in w), w
+    # a page no session owns takes only questions with no session: another project's Claude never asks there
+    assert asker(rf, "")("sess-other") is None and asker(rf, "")("") == "solo"
     # the skills on a video: ran (the last one now while it is made), then the style's and chained ones still to run
     ve = tmp / "edits" / "sk"
     (ve / "review").mkdir(parents=True)
@@ -2728,7 +3673,8 @@ def demo():
         assert e.code == 403
     os.environ.pop("CLAUDE_CODE_SESSION_ID")
     (folder / "review" / ".session").unlink(missing_ok=True)
-    assert asker(folder, "")("sess-anyone") == "demo", "no session known (older Claude Code): any question"
+    assert asker(folder, "")("") == "demo", "no session known (older Claude Code): a question with no session"
+    assert asker(folder, "")("sess-anyone") is None, "a session that never touched this video: another project's"
     assert asker(folder, "sess-review")("sess-anyone") is None
     hs = Path(os.environ["AI_EDITOR_HOME"]) / "home" / "state.json"   # the home page's job for this video: its Claude asks here
     hs.parent.mkdir(parents=True, exist_ok=True)
@@ -2742,7 +3688,7 @@ def demo():
     assert asker(folder, "")("sess-job") == "demo" and asker(folder, "")("sess-two") is None, "the job's own edit page only"
     (other / "review").mkdir(parents=True, exist_ok=True)
     (other / "review" / ".session").write_text("sess-three", encoding="utf-8")
-    assert asker(folder, "")("sess-three") is None and asker(folder, "")("sess-old") == "demo", "working on another edit: not here"
+    assert asker(folder, "")("sess-three") is None and asker(folder, "")("sess-old") is None, "working on another edit, or on none: not here"
     shutil.rmtree(other)
     hs.write_bytes(had) if had is not None else hs.unlink()
     os.environ["CLAUDE_CODE_SESSION_ID"] = "sess-review"
@@ -2789,7 +3735,22 @@ def demo():
     assert [x["kind"] for x in ad] == ["link", "image"] and json.loads(get("/state").read())["assets"] == ad
     assert get("/" + ad[1]["src"]).headers["Content-Type"] == "image/png"
     assert post("/assets", {"remove": 1})["items"] == ad[:1] and not (folder / ad[1]["src"]).exists()
-    assert not json.loads(get("/state").read())["listening"]
+    up = lambda name, data: json.loads(urllib.request.urlopen(urllib.request.Request(
+        f"{base}/assets/upload?name={quote(name)}&say=the%20demo&t={tok}", data, method="POST")).read())["items"]
+    with tempfile.TemporaryDirectory() as vt:   # a video: streamed in, its picture at ?thumb=1
+        clip = Path(vt, "clip.mp4")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=d=1:s=160x90:r=10", str(clip)], check=True)
+        ad = up("demo clip.mp4", clip.read_bytes())
+    assert ad[-1] == {"kind": "video", "src": "assets/asset-vid1.mp4", "name": "demo clip.mp4", "say": "the demo"}, ad[-1]
+    assert get("/" + ad[-1]["src"] + "?thumb=1").headers["Content-Type"] == "image/jpeg"
+    try:
+        up("notes.txt", b"x")
+        raise AssertionError("a text file was added")
+    except urllib.error.HTTPError as err:
+        assert err.code == 400 and "Add a video" in json.loads(err.read())["error"]
+    post("/assets", {"remove": len(ad) - 1})
+    st = json.loads(get("/state").read())
+    assert not st["listening"] and f'"{folder.resolve()}" wait' in st["resume"], "Copy for Claude names this edit"
     # the first-edit notice: round 1 of the user's first videos, until dismissed; the theme keeps the count
     assert json.loads(get("/state").read())["intro"], "round 1 of the first video: the notice shows"
     set_theme("dark")
@@ -2857,6 +3818,7 @@ def demo():
     post("/event", {"type": "stop"})
     assert not load(folder / "review.json")["sent"]
     post("/event", {"type": "send"})
+    assert post("/claude", {})["opened"] and load(folder / "review.json")["claude"]["command"] == f"claude '/ai-editor:start carry on edits/{folder.name}'"
     cq = post("/comment", {"t": 2.0, "text": "queued then stopped"})   # with Claude: queued for the next round
     assert cq["queued"] and cq["round"] == 2, cq
     post("/event", {"type": "stop"})
@@ -2934,6 +3896,138 @@ def demo():
     c3 = post("/comment", {"t": 5.1, "text": "louder here", "alt": "wide"})
     assert c3["alt"] == "wide" and c3["words"] == "later", c3
     c4 = post("/comment", {"t": 1.0, "text": "on all of them", "alt": "*"})
+    c6 = post("/comment", {"t": 2.0, "text": "wait for it", "add_text": {"style": "box", "x_pct": 50, "y_pct": 140}})   # the Text tool
+    assert c6["add_text"] == {"style": "box", "x_pct": 50.0, "y_pct": 100.0, "size_pct": TEXT_SIZE} and c6["t_end"] == 5.0, c6
+    # the Text tab: a text not sent yet changes in place (words, look, place, time)
+    c6 = post("/edit", {"id": c6["id"], "text": "wait for it!", "add_text": {"style": "outline", "x_pct": 40, "y_pct": 30}, "t": 2.5, "t_end": 6})
+    assert (c6["text"], c6["add_text"]["style"], c6["add_text"]["x_pct"], c6["t"], c6["t_end"]) == ("wait for it!", "outline", 40.0, 2.5, 6.0), c6
+    # a typed one (texts.json): Add, Edit and Delete change it on the spot, with no note (Claude does not have the round)
+    (folder / "texts.json").write_text(json.dumps({"items": [{"id": "edit1-99", "text": "hi there", "style": "plain", "start": 1.0,
+                                                              "end": 4.0, "x_pct": 50, "y_pct": 40, "size_pct": 6}]}), encoding="utf-8")
+    assert [x["id"] for x in json.loads(get("/state").read())["texts"]] == ["edit1-99"]
+    ch = post("/text/edit", {"id": "edit1-99", "text": "hello there", "style": "box", "x_pct": 30, "start": 2, "end": 5})
+    row = load(folder / "texts.json")["items"][0]
+    assert (row["text"], row["style"], row["x_pct"], row["y_pct"], row["start"], row["end"]) == ("hello there", "box", 30.0, 40.0, 2.0, 5.0), row
+    assert ch == {"ok": True, "id": "edit1-99"} and not any("on-screen text" in c["text"] for c in load(folder / "review.json")["comments"]), ch
+    nt = post("/text/add", {"text": "new one", "style": "plain", "x_pct": 50, "y_pct": 60, "size_pct": 9, "start": 3, "end": 4})
+    row = load(folder / "texts.json")["items"][-1]
+    assert row["id"] == nt["id"] and (row["text"], row["size_pct"], row["start"], row["end"]) == ("new one", 9.0, 3.0, 4.0), row
+    st = json.loads(get("/state").read())
+    assert st["bake"]["state"] in ("waiting", "working", "off") and st["texts_baked"] == [], st["bake"]
+    post("/text/delete", {"id": nt["id"]})
+    # the Captions panel: words at a time and the look, saved for this video only, with a note each
+    from ai_editor import taste as _taste
+    cc1 = post("/captions", {"words": "sentence"})
+    cc2 = post("/captions", {"look": "bold"})
+    cap = (_taste.load_json(folder, count=False) or {}).get("captions") or {}
+    assert cap.get("words_per_caption") == 12 and cap.get("preset") == "bold", cap
+    cui = json.loads(get("/state").read())["captions_ui"]
+    assert cui["words"] == "sentence" and cui["look"] == "bold" and "plain" in cui["looks"], cui
+    assert cc1["text"].startswith("Captions: a sentence at a time, for this video"), cc1
+    assert cc2["id"] == cc1["id"] and cc2["text"].startswith("Captions: a sentence at a time and the bold look"), cc2   # one note, kept current
+    assert all(r["scope"] == f"video:{folder.name}" for r in _taste.load_rules() if r.get("setting", "").startswith("captions.")), "this video only"
+    for bad in ({"words": "7"}, {"look": "nope"}, {}):
+        try:
+            post("/captions", bad)
+            raise AssertionError(bad)
+        except urllib.error.HTTPError as e:
+            assert e.code == 400, bad
+    for x in (cc1, cc2):
+        post("/delete", {"id": x["id"]})
+    for r in [r for r in _taste.load_rules() if r.get("setting", "").startswith("captions.")]:
+        with contextlib.redirect_stdout(io.StringIO()):
+            _taste.forget(r["id"])   # the learn checks below count the session's own rules
+    # the Sounds panel: picks for every video into the library (a temp one here), one note kept current, previews play
+    keep_lib = os.environ.get("AI_EDITOR_LIBRARY")
+    os.environ["AI_EDITOR_LIBRARY"] = str(tmp / "soundlib")
+    try:
+        su = json.loads(get("/state").read())["sounds_ui"]
+        assert [x["cue"] for x in su["cues"]][:3] == ["whoosh-in", "pop", "zoom"] and su["own"] == [], su
+        s1 = post("/sound", {"cue": "pop", "choice": "none"})
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=f=660:d=0.5", str(tmp / "ding.wav")], check=True)
+        s2 = post("/sound/add", {"cue": "zoom", "name": "my ding!.wav", "data": "data:audio/wav;base64," +
+                                 base64.b64encode((tmp / "ding.wav").read_bytes()).decode()})
+        assert s2["id"] == s1["id"] and s2["text"].startswith("Sounds for every video: Logo pops in off; Zoom is my ding.wav."), s2
+        su = json.loads(get("/state").read())["sounds_ui"]
+        assert su["own"] == ["my ding.wav"] and {x["cue"]: x["choice"] for x in su["cues"]}["zoom"] == "my ding.wav", su
+        assert get("/sound-preview?cue=zoom&c=my%20ding.wav").headers["Content-Type"] == "audio/wav"
+        for bad in ({"cue": "pop", "choice": "nope.wav"}, {"cue": "nope", "choice": "default"}):
+            try:
+                post("/sound", bad)
+                raise AssertionError(bad)
+            except urllib.error.HTTPError as e:
+                assert e.code == 400, bad
+        try:
+            get("/sound-preview?cue=zoom&c=..%2Freview.json")
+            raise AssertionError("a preview of a file not in the library")
+        except urllib.error.HTTPError as e:
+            assert e.code == 404
+        # the timeline's Sounds row: put a library sound at a moment, take it out, take out one the plan put there
+        sa = post("/sfx/add", {"t": 2.0, "sound": "my ding.wav"})
+        placed = json.loads(get("/state").read())["placed_sounds"]
+        assert [x["sound"] for x in placed] == ["my ding.wav"] and placed[0]["t"] == 2.0, placed
+        sr = post("/sfx/remove", {"t": 2.0, "placed": placed[0]["id"], "src": "my ding.wav"})
+        sx = post("/sfx/remove", {"t": 3.5, "src": ".sfx/pop.wav"})
+        assert sr["id"] == sa["id"] == sx["id"] and sx["lines"] == ["add my ding at 0:02.0", "remove my ding at 0:02.0",
+                                                                      "remove pop at 0:03.5"], sx
+        assert not json.loads(get("/state").read())["placed_sounds"] and json.loads(get("/state").read())["sfx_removed"] == [3.5]
+        assert load(folder / "overrides.json")["sfx"]["3.500"] == {"deleted": True}
+        for bad in ({"t": 1, "sound": "nope.wav"}, {"sound": "my ding.wav"}):
+            try:
+                post("/sfx/add", bad)
+                raise AssertionError(bad)
+            except urllib.error.HTTPError as e:
+                assert e.code == 400, bad
+        (folder / "overrides.json").unlink()
+        post("/delete", {"id": sa["id"]})
+        post("/delete", {"id": s1["id"]})
+    finally:
+        if keep_lib is None:
+            os.environ.pop("AI_EDITOR_LIBRARY", None)
+        else:
+            os.environ["AI_EDITOR_LIBRARY"] = keep_lib
+    # caption lines retyped: words one each, extra on the last word, missing ones blanked; one running note
+    assert caption_words(["1.000", "1.300", "1.600"], "hello there") == {"1.000": "hello", "1.300": "there", "1.600": ""}
+    assert caption_words(["1.000", "1.300"], "a b c") == {"1.000": "a", "1.300": "b c"}
+    assert caption_words(["1.000"], "") == {"1.000": ""}
+    k1 = post("/captions/text", {"s": 1.0, "w": [1.0, 1.3], "text": "hello world!", "old": "hello world"})
+    k2 = post("/captions/text", {"s": 2.0, "w": [2.0], "text": "", "old": "later"})
+    assert k2["id"] == k1["id"] and k2["text"].startswith('Captions retyped: "hello world" at 0:01.0 now "hello world!"; "later" at 0:02.0 taken out.'), k2
+    assert json.loads(get("/state").read())["cap_words"] == {"1.000": "hello", "1.300": "world!", "2.000": ""}
+    try:
+        post("/captions/text", {"s": 1.0, "w": [], "text": "x"})
+        raise AssertionError("a line with no words")
+    except urllib.error.HTTPError as e:
+        assert e.code == 400
+    (folder / "overrides.json").unlink()
+    post("/delete", {"id": k1["id"]})
+    # a card on the video: moved or resized, then deleted, into overrides.json with no note (Claude does not have the
+    # round): the page draws it moved until the bake; its picture is served
+    trk_items = json.loads(get("/data?k=edit-1").read())["items"]["cards"]
+    assert trk_items[0]["key"].startswith("later@"), trk_items
+    cm = post("/card/edit", {"key": trk_items[0]["key"], "label": "the picture", "t": 3.5, "t_end": 5.5, "box": [10, 12.34, 50, 30]})
+    assert load(folder / "overrides.json")["cards"][trk_items[0]["key"]] == {"box": [10.0, 12.3, 50.0, 30.0]}
+    assert cm == {"ok": True}, cm
+    pend = json.loads(get("/state").read())["cards_pending"]
+    assert pend == [{"key": trk_items[0]["key"], "box": [10.0, 12.3, 50.0, 30.0]}], pend
+    cd = post("/card/edit", {"key": trk_items[0]["key"], "label": "the picture", "t": 3.5, "t_end": 5.5, "deleted": True})
+    assert load(folder / "overrides.json")["cards"][trk_items[0]["key"]] == {"box": [10.0, 12.3, 50.0, 30.0], "deleted": True}
+    for bad in ({"key": "x", "t": 1, "t_end": 2, "box": [0, 0, 10, 10]}, {"key": "a@1.0", "t": 1, "t_end": 2, "box": [0, 0, 1, 10]}):
+        try:
+            post("/card/edit", bad)
+            raise AssertionError(bad)
+        except urllib.error.HTTPError as e:
+            assert e.code == 400, bad
+    assert cd == {"ok": True} and json.loads(get("/state").read())["cards_pending"] == [{"key": trk_items[0]["key"], "deleted": True}]
+    (folder / "overrides.json").unlink()
+    for bad in ("/card-img/../review.json", "/card-img/review.json"):
+        try:
+            get(bad)
+            raise AssertionError(bad)
+        except urllib.error.HTTPError as e:
+            assert e.code == 404, bad
+    gone = post("/text/delete", {"id": "edit1-99"})
+    assert not load(folder / "texts.json")["items"] and gone == {"ok": True, "id": "edit1-99"}, gone
     # a note that reads as a lasting preference is offered as a rule, ticked; the user can untick it
     assert looks_like_rule("Too many zooms") and looks_like_rule("I prefer bigger captions") and not looks_like_rule("cut the um at 0:12")
     c5 = post("/comment", {"t": 2.0, "text": "always use fewer zooms"})
@@ -2958,13 +4052,18 @@ def demo():
     assert st["text"] == "rendering" and st["pct"] == 75 and not st["done"], st
     post("/event", {"type": "approve"})
     out = waited()
-    assert out.startswith("APPROVE: demo the edit, round 1, 4 notes.") and f"also wide: {folder / 'review' / 'v-edit1-wide.mp4'}" in out, out
-    assert f"assets: {folder / 'assets.json'} (1 image or link the user added." in out, out
+    assert out.startswith("APPROVE: demo the edit, round 1, 5 notes.") and f"also wide: {folder / 'review' / 'v-edit1-wide.mp4'}" in out, out
+    assert f"assets: {folder / 'assets.json'} (1 video, image or link the user added." in out, out
     assert f"#{c4['id']} 0:01.0 (1.0s) [all videos]: on all of them" in out, out
+    assert f": wait for it! [add text: outline]" in out and f"texts: {folder / 'texts.json'} (1 on-screen text the user typed" in out, out
+    assert load(folder / "texts.json")["items"] == [{"id": f"edit1-{c6['id']}", "text": "wait for it!", "style": "outline", "x_pct": 40.0,
+                                                       "y_pct": 30.0, "size_pct": TEXT_SIZE, "start": 2.5, "end": 6.0}]
     assert f"#{c3['id']} 0:05.1 (5.1s) [wide] [card 0 image 'later']: louder here" in out, out
     # the final approve: LEARN asks Claude for rules from every note of the session, the page waits for them
     assert "LEARN: the video is approved" in out and "#1 the cut r1: cut the hello, please -> reply: cut it" in out, out
-    assert json.loads(get("/state").read())["learn"] == {"state": "reading", "style": "My style"}
+    lr0 = json.loads(get("/state").read())["learn"]
+    assert {k: lr0[k] for k in ("state", "style")} == {"state": "reading", "style": "My style"}, lr0
+    assert lr0["styles"][0]["here"] and lr0["styles"][0]["name"] == "My style", lr0["styles"]   # Save to: this video's style first
     try:
         post("/comment", {"t": 2, "text": "after approve"})
         raise AssertionError("a note after approve")
@@ -3032,7 +4131,13 @@ def demo():
         raise AssertionError("done before the user ticked")
     except SystemExit as e:
         assert "nothing ticked" in str(e)
-    post("/learn", {"chosen": [0, 2, 9]})
+    for bad, code in (({"chosen": [0], "to": "/no/such/style.json"}, 400), ({"chosen": [0], "new": " "}, 409)):
+        try:   # Save to takes only a listed style; a new style needs a name
+            post("/learn", bad)
+            raise AssertionError(bad)
+        except urllib.error.HTTPError as e:
+            assert e.code == code, (bad, e.code)
+    post("/learn", {"chosen": [0, 2, 9], "to": lr["styles"][0]["id"]})
     out = waited()
     assert out.startswith("LEARN: the user ticked 2 rules for My style:") and "Captions one size smaller (captions.size_pct=4)" in out, out
     assert "Fewer zooms" not in out and "learn --done" in out, out
@@ -3042,6 +4147,25 @@ def demo():
     assert lr["state"] == "done" and lr["summary"] == "Saved to @alice. Next video uses it.", lr
     sk = (tmp / "skills" / "edit-like-alice" / "SKILL.md").read_text(encoding="utf-8")
     assert "- Keep the pauses short." in sk and "Fewer zooms" not in sk, sk
+    old_lib = os.environ.get("AI_EDITOR_LIBRARY")
+    os.environ["AI_EDITOR_LIBRARY"] = str(tmp / "lib")   # New style from this video: a named copy of @alice
+    try:
+        ns_ = new_style_from(folder, "  Podcast   clips ")
+        nsp = Path(ns_["id"])
+        assert ns_["name"] == "Podcast clips" and ns_["new"] and nsp.is_file() and nsp.parent.name == "own-podcast-clips", ns_
+        cp = json.loads(nsp.read_text(encoding="utf-8"))
+        assert cp["own"] and cp["handle"] == "own-podcast-clips" and shown_style(nsp) == "Podcast clips", cp
+        assert any(x["name"] == "Podcast clips" for x in style_choices(folder)), "the new style is listed next time"
+        try:
+            new_style_from(folder, "")
+            raise AssertionError("a nameless style")
+        except ValueError:
+            pass
+    finally:
+        if old_lib is None:
+            os.environ.pop("AI_EDITOR_LIBRARY", None)
+        else:
+            os.environ["AI_EDITOR_LIBRARY"] = old_lib
     assert json.loads((sp.parent / "style.overrides.json").read_text(encoding="utf-8"))["captions"]["size_pct"] == 4
     try:
         post("/learn", {"chosen": [1]})
@@ -3083,6 +4207,11 @@ def demo():
         assert e.code == 409
     out = waited()
     assert out.startswith("TRIALS ASK: make t2 the motion graphics bit") and "trials --propose" in out, out
+    try:   # a note before anything is made: the tab's own Ask box is for that
+        post("/trials", {"action": "note", "text": "x"})
+        raise AssertionError("a note before Make")
+    except urllib.error.HTTPError as e:
+        assert e.code == 409
     trials({**plan, "versions": [plan["versions"][0], {"kinds": ["section"], "line": "0:06 to 0:15"}], "reply": "Done. t2 is 0:06 to 0:15."})
     t = load(folder / "review.json")["trials"]
     assert t["asks"][0]["reply"] == "Done. t2 is 0:06 to 0:15." and t["v"] == 2 and t["handled"] is None, t
@@ -3094,6 +4223,21 @@ def demo():
         cmd_alt(ns(name="t1", video=str(vid), transcript=None, trial=True), folder)
     d = load(folder / "review.json")
     assert d["trials"]["state"] == "chosen" and next(a for a in d["alts"] if a["name"] == "t1")["trial"] is True, d["alts"]
+    # feedback once they are made: notes for one version (with its time) or all, Claude's reply under them
+    post("/trials", {"action": "note", "text": "the hook is too long", "for": "t1", "t": 2.34})
+    post("/trials", {"action": "note", "text": "titles bigger", "for": "t9"})   # not a version: all of them
+    out = waited()
+    assert out.startswith("TRIALS NOTE:") and "t1 at 2.3s: the hook is too long" in out and "all of them: titles bigger" in out, out
+    assert "trials --reply" in out and "alt t1 --video" in out, out
+    with contextlib.redirect_stdout(io.StringIO()):
+        trials_reply(folder, "t1 opens on the short hook now; titles are bigger on all three.")
+    tn = load(folder / "review.json")["trials"]["notes"]
+    assert [x["reply"] for x in tn] == ["", "t1 opens on the short hook now; titles are bigger on all three."], tn
+    try:
+        trials_reply(folder, "again")
+        raise AssertionError("a reply with nothing to answer")
+    except SystemExit as e:
+        assert "no trial reel notes" in str(e)
     update(folder / "review.json", lambda d: (d.pop("trials"), d.update(alts=[a for a in d["alts"] if a["name"] != "t1"])))
     # a skill style ("skill" in its style.json): the ticked rules go into that skill's own SKILL.md (skillrules.py)
     sk_md = tmp / "skills" / "alice-edit" / "SKILL.md"
@@ -3144,15 +4288,21 @@ def demo():
     vid.write_bytes(b"the next render")
     assert len(get("/video?k=cut-1").read()) == size and len(get("/video?k=edit-1&alt=wide").read()) == size
     # the footer after a pick-up: an approve says approved, a send says Claude is working (node runs the page's own function)
-    js = re.search(r"^function listenText\(S\)\{.*?\n\}", HTML.read_text(encoding="utf-8"), re.M | re.S)
-    assert js, "review.html has no listenText()"
+    page = HTML.read_text(encoding="utf-8")
+    js = re.search(r"^function listenText\(S\)\{.*?\n\}", page, re.M | re.S)
+    alive = re.search(r"^function alive\(S\)\{.*?\}$", page, re.M)
+    assert js and alive, "review.html has no listenText() or alive()"
     if shutil.which("node"):
         ev = lambda t, n: {"listening": False, "sent": True, "round": n, "comments": [],
                            "events": [{"type": t, "stage": "edit", "handled": True}]}
         mid = {"listening": False, "busy": True, "sent": False, "round": 1, "stage": "edit", "comments": [], "events": []}
-        o = subprocess.run(["node", "-e", js.group(0) + "for(const s of " + json.dumps([ev("approve", 0), ev("send", 1), mid])
+        nc = re.search(r"^const newClaude=.*$", page, re.M).group(0)   # notes sent, a new Claude opened
+        fresh = dict(ev("send", 1), events=[{"type": "send", "stage": "edit", "handled": False}], claude={"opened": True, "at": time.time()})
+        o = subprocess.run(["node", "-e", nc + alive.group(0) + js.group(0) + "for(const s of " + json.dumps(
+                            [ev("approve", 0), {**ev("send", 1), "busy": True}, mid, fresh, ev("send", 1)])
                             + ")console.log(listenText(s))"], capture_output=True, text=True, check=True).stdout
-        assert o.splitlines() == ["Approved", "Claude is working on the next draft", "Claude is working. Notes you send now are next."], o
+        assert o.splitlines() == ["Approved", "Claude is working on the next draft", "",   # mid-round: the Claude control says it
+                                  "A new Claude is starting in its own Terminal window", "Claude stopped. Your notes are saved."], o
     # approve on the cut: the style-edit's scripts fill the page's "Making the edit" steps, in place, never twice
     sf = tmp / "edits" / "steps"
     sf.mkdir(parents=True)
@@ -3512,6 +4662,23 @@ def demo():
     srv2.server_close()
     srv.shutdown()
     srv.server_close()
+    if os.name != "nt":   # the Claude control: a running `claude` here is working, Stop ends it, then it is off
+        cf = tmp / "clc"
+        (cf / "review").mkdir(parents=True)
+        fake = tmp / "claude"
+        fake.symlink_to(shutil.which("sleep") or "/bin/sleep")   # a copy of a system binary is killed on macOS: a link
+        proc = subprocess.Popen([str(fake), "30"])
+        try:
+            assert claude_state(cf)["state"] == "off" and not stop_claude(cf), "no Claude ever ran here"
+            (cf / "review" / ".claude").write_text(json.dumps({"pid": proc.pid, "tty": "/dev/ttys-x", "app": "Terminal", "session": "s1", "cwd": "/a b"}), encoding="utf-8")
+            st = claude_state(cf)
+            assert st["state"] == "working" and st["show"] and st["last"] and st["resume"] == "cd '/a b' && claude --resume s1", st
+            (cf / "review" / ".listening").touch()
+            assert claude_state(cf)["state"] == "waiting"
+            assert stop_claude(cf) and proc.wait(5) is not None and not (cf / "review" / ".listening").exists()
+            assert claude_state(cf) == {**st, "state": "off", "show": False}, claude_state(cf)
+        finally:
+            proc.kill()
     shutil.rmtree(tmp, ignore_errors=True)
     print("review demo ok")
 
@@ -3571,8 +4738,10 @@ def main():
     s.add_argument("--propose", metavar="JSON", help="after the final approve: candidate rules for the page's learn panel")
     s.add_argument("--done", nargs="?", const="", metavar="SUMMARY", help="save the rules the user ticked into the style")
     s = sp.add_parser("trials", help="the Trial reels tab: Claude's plan for re-cuts of an approved reel")
-    s.add_argument("--propose", required=True, metavar="JSON",
+    g = s.add_mutually_exclusive_group(required=True)
+    g.add_argument("--propose", metavar="JSON",
                    help='{"message", "hooks": [{"text", "from"}], "versions": [{"kinds", "line"}], "idea"?, "reply"?}')
+    g.add_argument("--reply", metavar="TEXT", help="answer the notes on the made trial reels (TRIALS NOTE)")
     a = ap.parse_args()
     folder = Path(a.folder).resolve()
     if getattr(a, "stage", None) == "edit":  # an edit round reads the edit folder's own files
@@ -3583,7 +4752,11 @@ def main():
         sys.exit(f"no review in {folder}: run `start` first")
     if a.cmd != "serve":   # every Claude-side command marks Claude as working on this edit
         (folder / "review").mkdir(parents=True, exist_ok=True)
-        (folder / "review" / ".claude").touch()
+        w = who_claude()   # which Claude, and where: Send types into it, or resumes it, before opening a new one
+        if w or not (folder / "review" / ".claude").exists():
+            (folder / "review" / ".claude").write_text(json.dumps(w), encoding="utf-8")
+        else:
+            (folder / "review" / ".claude").touch()
         if askhook.session():   # this session's questions now go to this edit's page
             (folder / "review" / ".session").write_text(askhook.session(), encoding="utf-8")
     if a.cmd == "start":
@@ -3622,7 +4795,7 @@ def main():
     elif a.cmd == "learn":
         cmd_learn(a, folder)
     elif a.cmd == "trials":
-        trials_propose(folder, a.propose)
+        trials_reply(folder, a.reply) if a.reply else trials_propose(folder, a.propose)
 
 
 if __name__ == "__main__":
