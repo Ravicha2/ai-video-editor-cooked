@@ -3,6 +3,28 @@
 What changed for every user, newest first.
 
 ## Unreleased
+- A CapCut draft now carries the text the user typed on the review page (upstream's `texts.json`),
+  as a plain native text at their place and time. Its plain / outline / box look is not carried:
+  CapCut styles all native texts at once, so it takes CapCut's own styling.
+- A `talking-head` skill runs the fast path for one person talking to camera in one take: no intake
+  questions the profile or a saved style already answers, no creator teardown when the style exists,
+  the talking-head defaults in one place, and the CapCut draft installed and checked at the end.
+- A still card in a CapCut draft is a `photo` material, as CapCut itself writes one. As `image` the
+  clip stayed on the timeline and drew nothing (the CDG capture, found in issue #8's install check).
+- A CapCut draft now carries the plan's titles, cta and list lines as native texts, each on its own
+  track over the cards and under the captions, at the plan's seconds and place, so the words that
+  were only in the Remotion render are editable in CapCut too. A stamp (a drawn X) stays a hand step:
+  a text segment cannot carry it.
+- A CapCut draft now carries the cut's own audio: the segment cache is video-only, so the speech is
+  copied out of `cut.mp4` as `media/cut-audio.m4a` and sits on its own audio track under the pieces.
+  Before this the draft opened silent. Sound cues stay on their own track.
+- A CapCut draft now installs itself into CapCut's project list: `capcut_draft.py install` copies the
+  draft folder into the project store (CapCut closed), writes the `draft_meta_info.json` its startup
+  scan needs - including the media-panel list, without which the draft opened with an empty import
+  section - re-points every media path at the copy and appends the project entry to
+  `root_meta_info.json` (a `.bak` kept first). A taken name is never overwritten: it stops and prints
+  the first free suffix. The user opens CapCut once to confirm the draft and its pieces, captions,
+  titles, cards and cues - the one check no agent can run.
 - Export to CapCut now writes a real desktop draft: the cut's pieces on the main track, each caption
   page as a native text on a text track (timed and placed on the plan's caption line, still unstyled -
   style one and CapCut applies it to all), every rendered card on an overlay track at its own place

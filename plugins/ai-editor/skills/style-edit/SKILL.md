@@ -224,6 +224,11 @@ python3 "$S/export_nle.py" edits/<name> --to fcpxml|premiere|resolve|capcut|edl|
 Writes `edits/<name>/export/`. Moving cards render with alpha first (about 0.7 s a card frame; say so).
 Which file to open, YouTube chapters for 16:9: `references/render.md` "Export to another editor".
 
+CapCut only: with CapCut closed, run `python3 "$S/capcut_draft.py" install edits/<name>/export/capcut/<name>`,
+then ask the user to confirm the draft in CapCut (listed; pieces, captions, titles, cards and cues editable).
+It copies the folder into the project store and refuses on a taken name or while CapCut runs; repeat
+the check after an update.
+
 ## If a script stops
 
 | message | do |

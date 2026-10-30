@@ -19,6 +19,7 @@ Read a skill's `SKILL.md` in full before doing its task.
 |---|---|---|
 | `start` | `plugins/ai-editor/skills/start/` | "edit my video", "make my video look like @creator", drops a video |
 | `setup` | `plugins/ai-editor/skills/setup/` | "set up the editor", or a tool is missing |
+| `talking-head` | `plugins/ai-editor/skills/talking-head/` | "talking head", "edit my talking-head video", "fast cut of my take" |
 | `cut` | `plugins/ai-editor/skills/cut/` | "cut my video", "remove my mistakes" |
 | `style-edit` | `plugins/ai-editor/skills/style-edit/` | "style it", "add captions and zooms", "render the edit" |
 | `overlays` | `plugins/ai-editor/skills/overlays/` | after a render: "add an animation here", "this card is wrong", "the card covers my face", "swap the logo", "show the real page instead", "fewer cards" |

@@ -187,15 +187,18 @@ card frame on a laptop); `--no-render` skips them. If the raw take moved, pass `
 | Final Cut Pro 10.6+ | `<name>.fcpxml` (FCPXML 1.10) | File > Import > XML | cut, cards, titles, sound, markers |
 | DaVinci Resolve 18+ | `<name>.fcpxml`, or `<name>.xml` | File > Import > Timeline; captions: File > Import > Subtitle, the `.srt` | cut, cards, sound, markers; titles may come in plain |
 | Premiere Pro | `<name>.xml` (FCP7 XML, xmeml 4) | File > Import; captions: File > Import, the `.srt` | cut, cards, sound, markers |
-| CapCut | `capcut/<name>/draft_info.json` (+ `CAPCUT.md`, `<name>.srt`) | CapCut's project list; close CapCut before copying the folder into the store. Captions > Add captions takes the `.srt` | the cut's pieces on the main track; cards and sound by hand |
+| CapCut | `capcut/<name>/` (`draft_info.json` + `media/`) (+ `CAPCUT.md`, `<name>.srt`) | with CapCut closed, `python3 capcut_draft.py install capcut/<name>`, then start CapCut and open it from the project list. Captions > Add captions takes the `.srt` | cut, captions, titles, cards and cues; the user checks the open in person |
 | Any | `<name>.edl` (CMX3600) | the editor's EDL import | the cut only |
 
 - Premiere does not read FCPXML (Adobe: it reads FCP7 XML; FCPXML needs a converter such as
   XtoCC), so `premiere` writes xmeml.
 - CapCut's desktop project (`draft_info.json`) is undocumented and changes between versions. The
   export writes the cut's pieces as one video track, pinned to schema 187; when the user's own
-  drafts are newer it refuses and says to re-check after a CapCut update. `CAPCUT.md` keeps the
-  by-hand path for the cards, captions and sound the draft does not carry yet.
+  drafts are newer it refuses and says to re-check after a CapCut update. `capcut_draft.py install`
+  copies the draft into the project store with its `draft_meta_info.json`, re-points the media at the
+  copy and adds the project entry; it refuses on a name collision (and prints a free suffix) or
+  while CapCut is running. `CAPCUT.md` keeps the by-hand path and the check to repeat after an
+  update: the draft listed, the pieces re-cuttable, the captions, titles, cards and cues editable.
 - Cards: a plain capture is a PNG fitted to its box; anything that moves (an anim, a capture
   with marks or a highlight) is rendered by the Preview composition on a transparent ground,
   frame by frame (`render.mjs stills`), and cropped to its box as ProRes 4444 with alpha. Measured

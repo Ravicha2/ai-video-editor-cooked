@@ -2,13 +2,20 @@
 """Write a CapCut desktop draft for an edit: one video track, one segment per kept span.
 
     python3 capcut_draft.py demo        self-check, offline
+    python3 capcut_draft.py install DRAFT_DIR [--name NAME]
 
 The reader was probed in issue #4 (see docs/adr/0001-capcut-draft-format.md): the draft folder is
 plain JSON, every extra_material_ref must resolve, and timing is integer microseconds. 59.94 fps is
 60000/1001, so a frame count becomes µs with round(frames * 1_000_000 * 1001 / 60000).
+
+install copies a generated draft into CapCut's project store beside the user's own projects,
+writes the draft_meta_info.json the startup scan looks for, and adds the project-store entry.
+It never overwrites and refuses while CapCut is running: CapCut rewrites its store on quit.
 """
+import argparse
 import copy
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -63,6 +70,187 @@ def pinned_version(root=None):
     return PINNED
 
 
+def capcut_running():
+    """True when CapCut is up. Its meta writers are queued on quit, so installing then can be
+    overwritten (issue #4)."""
+    try:
+        if sys.platform == "darwin":
+            return subprocess.run(["pgrep", "-x", "CapCut"], stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL).returncode == 0
+        if sys.platform.startswith("win"):
+            out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq CapCut.exe", "/NH"],
+                                 capture_output=True, text=True)
+            return "CapCut.exe" in out.stdout
+    except OSError:
+        return False
+    return False
+
+
+def _free_name(root, name):
+    """The first free numeric suffix: demo, demo-2, demo-3... (never a second 'demo')."""
+    n = 2
+    while (root / f"{name}-{n}").exists():
+        n += 1
+    return f"{name}-{n}"
+
+
+def _draft_materials(folder, draft, now_s):
+    """draft_meta_info's type-0 list (the editor's media panel): one entry per media file, in the
+    shape real drafts carry (0320). CapCut indexes only what is listed here, so a draft without
+    them opens with an empty import section even though the timeline has its clips (issue #8's
+    install check). Paths are relative to the draft folder, as CapCut rewrites them itself."""
+    out = []
+    for bucket, metetype in (("videos", "video"), ("images", "photo"), ("audios", "music")):
+        for m in draft.get("materials", {}).get(bucket) or []:
+            p = Path(m.get("path") or "")
+            if not p.is_file():
+                continue
+            try:
+                path = "./" + p.relative_to(folder).as_posix()
+            except ValueError:
+                path = str(p)
+            out.append({
+                "ai_group_type": "", "create_time": now_s, "duration": m.get("duration", 0),
+                "enter_from": 0, "extra_info": p.name, "file_Path": path,
+                "height": m.get("height", 0), "id": m["id"], "import_time": now_s,
+                "import_time_ms": now_s * 1_000_000, "item_source": 1, "md5": "",
+                "metetype": metetype,
+                "roughcut_time_range": {"duration": m.get("duration", 0), "start": 0},
+                "sub_time_range": {"duration": -1, "start": -1}, "type": 0,
+                "width": m.get("width", 0),
+            })
+    return out
+
+
+def _meta_info(name, folder, root, draft_id, draft, now_us):
+    """draft_meta_info.json in CapCut 9.5's shape (issue #4, Appendix D). The startup scan only
+    discovers a folder that has this beside draft_info.json."""
+    size = (folder / "draft_info.json").stat().st_size
+    cover = "draft_cover.jpg" if (folder / "draft_cover.jpg").is_file() else ""
+    now_s = now_us // 1_000_000
+    return {
+        "cloud_draft_cover": False, "cloud_draft_sync": False, "cloud_package_completed_time": "",
+        "draft_cloud_capcut_purchase_info": "", "draft_cloud_last_action_download": False,
+        "draft_cloud_package_type": "", "draft_cloud_purchase_info": "", "draft_cloud_template_id": "",
+        "draft_cloud_tutorial_info": "", "draft_cloud_videocut_purchase_info": "",
+        "draft_cover": cover, "draft_deeplink_url": "",
+        "draft_enterprise_info": {"draft_enterprise_extra": "", "draft_enterprise_id": "",
+                                  "draft_enterprise_name": "", "enterprise_material": []},
+        "draft_fold_path": str(folder), "draft_id": draft_id, "draft_is_ae_produce": False,
+        "draft_is_ai_packaging_used": False, "draft_is_ai_shorts": False,
+        "draft_is_ai_translate": False, "draft_is_article_video_draft": False,
+        "draft_is_cloud_temp_draft": False, "draft_is_from_deeplink": "false",
+        "draft_is_invisible": False, "draft_is_pippit_draft": False,
+        "draft_is_web_article_video": False,
+        "draft_materials": [{"type": 0, "value": _draft_materials(folder, draft, now_s)}]
+        + [{"type": t, "value": []} for t in (1, 2, 3, 6, 7, 8)],
+        "draft_materials_copied_info": [], "draft_name": name, "draft_need_rename_folder": False,
+        "draft_new_version": "", "draft_removable_storage_device": "", "draft_root_path": str(root),
+        "draft_segment_extra_info": [], "draft_timeline_materials_size_": size,
+        "draft_type": "", "draft_web_article_video_enter_from": "",
+        "pippit_avatar_url": "", "pippit_extra_info": "", "pippit_id": "", "pippit_user_name": "",
+        "tm_draft_cloud_completed": "", "tm_draft_cloud_entry_id": -1, "tm_draft_cloud_modified": 0,
+        "tm_draft_cloud_parent_entry_id": -1, "tm_draft_cloud_space_id": -1,
+        "tm_draft_cloud_user_id": -1, "tm_draft_create": now_us, "tm_draft_modified": now_us,
+        "tm_draft_removed": 0, "tm_duration": draft.get("duration", 0),
+    }
+
+
+def _store_entry(name, folder, root, draft_id, draft, now_us):
+    """One all_draft_store entry, in the shape the installed root_meta_info.json carries."""
+    size = (folder / "draft_info.json").stat().st_size
+    cover = folder / "draft_cover.jpg"
+    return {
+        "cloud_draft_cover": False, "cloud_draft_sync": False,
+        "draft_cloud_last_action_download": False, "draft_cloud_purchase_info": "",
+        "draft_cloud_template_id": "", "draft_cloud_tutorial_info": "",
+        "draft_cloud_videocut_purchase_info": "",
+        "draft_cover": str(cover) if cover.is_file() else "",
+        "draft_fold_path": str(folder), "draft_id": draft_id, "draft_is_ai_shorts": False,
+        "draft_is_cloud_temp_draft": False, "draft_is_infinite_canvas_draft": False,
+        "draft_is_invisible": False, "draft_is_pippit_draft": False,
+        "draft_is_web_article_video": False, "draft_json_file": str(folder / "draft_info.json"),
+        "draft_name": name, "draft_new_version": "", "draft_root_path": str(root),
+        "draft_timeline_materials_size": size, "draft_type": "",
+        "draft_web_article_video_enter_from": "", "pippit_avatar_url": "", "pippit_extra_info": "",
+        "pippit_id": "", "pippit_user_name": "", "streaming_edit_draft_ready": False,
+        "tm_draft_cloud_completed": "", "tm_draft_cloud_entry_id": -1, "tm_draft_cloud_modified": 0,
+        "tm_draft_cloud_parent_entry_id": -1, "tm_draft_cloud_space_id": -1,
+        "tm_draft_cloud_user_id": -1, "tm_draft_create": now_us, "tm_draft_modified": now_us,
+        "tm_draft_removed": 0, "tm_duration": draft.get("duration", 0),
+    }
+
+
+def _repoint(obj, src, dst):
+    """Every absolute path under src now points under dst: media copied with the draft folder must
+    follow it, or deleting the export folder would break the installed draft."""
+    if isinstance(obj, dict):
+        return {k: _repoint(v, src, dst) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_repoint(v, src, dst) for v in obj]
+    if isinstance(obj, str) and os.path.isabs(obj):
+        p = Path(obj)
+        if p == src or src in p.parents:
+            return str(dst / p.relative_to(src))
+    return obj
+
+
+def _add_to_root(root, entry):
+    """Append the project-store entry, keeping root_meta_info.json.bak first. CapCut owns this file
+    and rewrites it on quit; writing it while the app is closed is the only safe moment."""
+    p = root / "root_meta_info.json"
+    if not p.is_file():
+        return False   # the startup scan indexes the folder on the next launch
+    shutil.copy2(p, p.with_name(p.name + ".bak"))
+    data = json.loads(p.read_text(encoding="utf-8"))
+    store = data.setdefault("all_draft_store", [])
+    store[:] = [e for e in store if e.get("draft_fold_path") != entry["draft_fold_path"]]
+    store.append(entry)
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, p)
+    return True
+
+
+def install(draft_dir, root=None, name=None, running=None):
+    """Copy a generated draft into CapCut's project store and add it to the project list. The
+    folder, its draft_meta_info.json and the root entry all point at the installed copy, so the
+    export folder can be deleted afterwards. Nothing is overwritten: a name collision stops and
+    names a free numeric suffix. Returns the installed folder."""
+    src = Path(draft_dir).resolve()
+    if not (src / "draft_info.json").is_file():
+        sys.exit(f"ERROR: {src} is not a draft folder (no draft_info.json). Export to CapCut first.")
+    root = Path(root).resolve() if root is not None else drafts_root()
+    if root is None or not root.is_dir():
+        sys.exit("ERROR: CapCut's project store was not found. Open CapCut once, close it, "
+                 "then install again.")
+    if (running or capcut_running)():
+        sys.exit("ERROR: CapCut is running. Quit CapCut fully, then install again: it rewrites "
+                 "its project store on quit.")
+    name = name or src.name
+    if not name or name in (".", "..") or Path(name).name != name:
+        sys.exit(f"ERROR: {name!r} is not a plain folder name.")
+    folder = root / name
+    if folder.exists():
+        free = _free_name(root, name)
+        sys.exit(f"ERROR: a draft named {name!r} is already in the project store. Nothing was "
+                 f"overwritten; {free!r} is free: re-run with --name {free}.")
+    draft = json.loads((src / "draft_info.json").read_text(encoding="utf-8"))
+    shutil.copytree(src, folder)
+    draft = _repoint(draft, src, folder)
+    if draft.get("name") != name:   # the project list shows the name in the draft
+        draft["name"] = name
+    (folder / "draft_info.json").write_text(json.dumps(draft, ensure_ascii=False, indent=1),
+                                           encoding="utf-8")
+    now = int(time.time() * 1_000_000)
+    draft_id = _uid()
+    (folder / "draft_meta_info.json").write_text(
+        json.dumps(_meta_info(name, folder, root, draft_id, draft, now), ensure_ascii=False, indent=1),
+        encoding="utf-8")
+    _add_to_root(root, _store_entry(name, folder, root, draft_id, draft, now))
+    return folder
+
+
 def _span(edit, start, length):
     """The newest cached encode of source frames start..start+length-1, or None."""
     files = list((Path(edit) / ".segments").glob(f"*/{start}-{start + length}.mp4"))
@@ -111,6 +299,43 @@ def ensure_pieces(ctx, media, probe=None, fill=None):
     return pieces
 
 
+def _probe_audio(path):
+    """(duration seconds, channels) of a media file's first audio stream, or (0, None)."""
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
+                        "format=duration:stream=codec_type,channels", "-of", "json", str(path)],
+                       capture_output=True, text=True)
+    if r.returncode:
+        return 0.0, None
+    j = json.loads(r.stdout or "{}")
+    a = next((s for s in j.get("streams", []) if s.get("codec_type") == "audio"), {})
+    return float((j.get("format") or {}).get("duration") or 0), a.get("channels")
+
+
+def _extract_audio(src, dst):
+    """Copy the cut's audio into an m4a; re-encode only when the codec cannot be copied."""
+    for codec in (["-c:a", "copy"], ["-c:a", "aac", "-b:a", "192k"]):
+        if subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-vn", "-map", "0:a:0",
+                           *codec, str(dst)]).returncode == 0:
+            return
+    sys.exit("ERROR: could not take the cut's audio for the draft (ffmpeg failed). "
+             "Re-run the cut, then export again.")
+
+
+def ensure_audio(ctx, media, probe=None, extract=None):
+    """The cut's own audio for the draft, or None when the cut has none. The segment cache is
+    video-only and the pieces carry no sound; without this the draft opens silent."""
+    cut = Path(ctx["edit"]) / "cut.mp4"
+    if not cut.is_file():
+        print(f"note: no {cut}; the draft will have no cut audio", file=sys.stderr)
+        return None
+    duration, channels = (probe or _probe_audio)(cut)
+    if not channels or duration <= 0:
+        return None
+    dst = Path(media) / "cut-audio.m4a"
+    (extract or _extract_audio)(cut, dst)
+    return {"path": dst, "duration": round(duration * 1_000_000)}
+
+
 def _uid():
     return str(uuid.uuid4()).upper()
 
@@ -138,7 +363,10 @@ AUX = {
 
 def _video_material(uid, path, width, height, duration, kind="video"):
     return {
-        "id": uid, "unique_id": uuid.uuid4().hex, "type": kind, "duration": duration,
+        # CapCut names a still "photo", not "image": as "image" the clip sat on the timeline and
+        # drew nothing (issue #8's install check)
+        "id": uid, "unique_id": uuid.uuid4().hex,
+        "type": "photo" if kind == "image" else kind, "duration": duration,
         "path": str(Path(path).resolve()), "width": width, "height": height, "has_audio": False,
         "material_name": Path(path).name, "category_name": "local", "crop_ratio": "free", "crop_scale": 1.0,
         "crop": {"upper_left_x": 0.0, "upper_left_y": 0.0, "upper_right_x": 1.0, "upper_right_y": 0.0,
@@ -208,17 +436,18 @@ def _text_material(uid, text):
     }
 
 
-def _text_segment(seg_uid, mid, anim_ref, start_us, end_us, y):
-    """One caption page as a text segment (draft 1017): no source times, one animations ref, and a
-    position in half-canvas units where negative y is down: the plan's `y_pct` from the top maps to
-    `(0.5 - y_pct/100) * 2`, so CapCut's own bottom captions (y -0.8) sit at 90% of the frame."""
+def _text_segment(seg_uid, mid, anim_ref, start_us, end_us, y, x=0.0):
+    """One caption page or label as a text segment (draft 1017): no source times, one animations
+    ref, and a position in half-canvas units where negative y is down: the plan's `y_pct` from the
+    top maps to `(0.5 - y_pct/100) * 2`, so CapCut's own bottom captions (y -0.8) sit at 90% of the
+    frame. `x_pct` maps the same way, as a centre."""
     return {
         "id": seg_uid, "source_timerange": None,
         "target_timerange": {"start": start_us, "duration": end_us - start_us},
         "render_timerange": {"start": 0, "duration": 0}, "desc": "", "state": 0, "speed": 1.0,
         "is_loop": False, "is_tone_modify": False, "reverse": False, "intensifies_audio": False,
         "cartoon": False, "volume": 1.0, "last_nonzero_volume": 1.0,
-        "clip": {"scale": {"x": 1.0, "y": 1.0}, "rotation": 0.0, "transform": {"x": 0.0, "y": y},
+        "clip": {"scale": {"x": 1.0, "y": 1.0}, "rotation": 0.0, "transform": {"x": x, "y": y},
                  "flip": {"vertical": False, "horizontal": False}, "alpha": 1.0},
         "uniform_scale": {"on": True, "value": 1.0}, "material_id": mid,
         "extra_material_refs": [anim_ref], "render_index": 14000, "keyframe_refs": [],
@@ -321,42 +550,72 @@ def _audio_material(uid, path, duration):
     }
 
 
+def _audio_refs(materials):
+    """The six refs an audio segment carries (draft 0315 (2)): speed, placeholder, fade, beats,
+    channel mapping, vocal separation."""
+    fade, beat = _uid(), _uid()
+    materials["audio_fades"].append({"id": fade, "type": "audio_fade", "fade_type": 0,
+                                     "fade_in_duration": 0, "fade_out_duration": 0})
+    materials["beats"].append({"id": beat, "type": "beats", "mode": 404, "gear": 404,
+                               "gear_count": 0, "enable_ai_beats": False, "user_beats": [],
+                               "user_delete_ai_beats": None,
+                               "ai_beats": {"beat_speed_infos": [], "beats_path": "",
+                                            "beats_url": "", "melody_path": "",
+                                            "melody_percents": [0.0], "melody_url": ""}})
+    refs = [fade, beat]
+    for b in ("speeds", "placeholder_infos", "sound_channel_mappings", "vocal_separations"):
+        ref = _uid()
+        materials[b].append(AUX[b](ref))
+        refs.append(ref)
+    return refs
+
+
+def _audio_segment(mid, refs, start_us, end_us):
+    return {
+        "id": _uid(), "source_timerange": {"start": 0, "duration": end_us - start_us},
+        "target_timerange": {"start": start_us, "duration": end_us - start_us},
+        "render_timerange": {"start": 0, "duration": 0}, "speed": 1.0, "volume": 1.0,
+        "last_nonzero_volume": 1.0, "material_id": mid, "extra_material_refs": refs,
+        "render_index": 0, "keyframe_refs": [], "visible": True, "clip": None,
+        "uniform_scale": None, "group_id": "", "track_render_index": 1,
+        "is_placeholder": False, "template_id": "", "source": "segmentsourcenormal",
+        "state": 0, "desc": "", "is_loop": False, "is_tone_modify": False, "reverse": False,
+        "intensifies_audio": False, "cartoon": False, "caption_info": None,
+        "enable_lut": False, "enable_adjust": False, "enable_hsl": False,
+        "enable_color_curves": True, "enable_hsl_curves": True,
+        "hdr_settings": None, "enable_color_wheels": True, "track_attribute": 0,
+        "enable_smart_color_adjust": False, "template_scene": "default", "common_keyframes": [],
+        "responsive_layout": {"enable": False, "target_follow": "", "size_layout": 0,
+                              "horizontal_pos_layout": 0, "vertical_pos_layout": 0},
+        "enable_color_match_adjust": False, "enable_color_correct_adjust": False,
+        "enable_adjust_mask": False, "raw_segment_id": "", "lyric_keyframes": None,
+        "enable_video_mask": True, "digital_human_template_group_id": "", "color_correct_alg_result": "",
+        "enable_mask_stroke": False, "enable_mask_shadow": False,
+    }
+
+
+def _cut_audio_track(audio, materials):
+    """The cut's own audio as one file on its own track. The segment cache is video-only (render.py
+    encodes spans with -an) and cut.mp4's audio is mixed from the same spans with the same joins
+    and 8 ms fades, so one segment at time 0 stays in sync with the pieces. Without this the draft
+    opens silent: the speech is in neither the pieces nor the cues."""
+    mid = _uid()
+    materials["audios"].append(_audio_material(mid, audio["path"], audio["duration"]))
+    return [{"id": _uid(), "type": "audio",
+             "segments": [_audio_segment(mid, _audio_refs(materials), 0, audio["duration"])],
+             "flag": 0, "attribute": 0, "name": "", "is_default_name": True}]
+
+
 def _cues_track(cues, rate, materials):
-    """Sound cues as one audio track (draft 0315 (2)'s shape): a segment per cue with six refs -
-    speed, placeholder, fade, beats, channel mapping, vocal separation: gaps allowed between
-    them, volume 1.0 because the level is already set in the rendered media (sfx.py). The media
-    lives in the draft folder; the copies are made by the export."""
+    """Sound cues as one audio track (draft 0315 (2)'s shape): a segment per cue with six refs:
+    gaps allowed between them, volume 1.0 because the level is already set in the rendered media
+    (sfx.py). The media lives in the draft folder; the copies are made by the export."""
     segments = []
-    for i, s in enumerate(cues or [], 1):
+    for s in cues or []:
         start_us, end_us = _us(s["start_f"], rate), _us(s["start_f"] + s["len_f"], rate)
         mid = _uid()
         materials["audios"].append(_audio_material(mid, s["path"], end_us - start_us))
-        fade, beat = _uid(), _uid()
-        materials["audio_fades"].append({"id": fade, "type": "audio_fade", "fade_type": 0,
-                                         "fade_in_duration": 0, "fade_out_duration": 0})
-        materials["beats"].append({"id": beat, "type": "beats", "mode": 404, "gear": 404,
-                                   "gear_count": 0, "enable_ai_beats": False, "user_beats": [],
-                                   "user_delete_ai_beats": None,
-                                   "ai_beats": {"beat_speed_infos": [], "beats_path": "",
-                                                "beats_url": "", "melody_path": "",
-                                                "melody_percents": [0.0], "melody_url": ""}})
-        refs = [fade, beat]
-        for b in ("speeds", "placeholder_infos", "sound_channel_mappings", "vocal_separations"):
-            ref = _uid()
-            materials[b].append(AUX[b](ref))
-            refs.append(ref)
-        segments.append({
-            "id": _uid(), "source_timerange": {"start": 0, "duration": end_us - start_us},
-            "target_timerange": {"start": start_us, "duration": end_us - start_us},
-            "render_timerange": {"start": 0, "duration": 0}, "speed": 1.0, "volume": 1.0,
-            "last_nonzero_volume": 1.0, "material_id": mid, "extra_material_refs": refs,
-            "render_index": 0, "keyframe_refs": [], "visible": True, "clip": None,
-            "uniform_scale": None, "group_id": "", "track_render_index": 1,
-            "is_placeholder": False, "template_id": "", "source": "segmentsourcenormal",
-            "state": 0, "desc": "", "is_loop": False, "is_tone_modify": False, "reverse": False,
-            "intensifies_audio": False, "cartoon": False, "caption_info": None,
-            "enable_lut": False, "enable_adjust": False,
-        })
+        segments.append(_audio_segment(mid, _audio_refs(materials), start_us, end_us))
     return [{"id": _uid(), "type": "audio", "segments": segments, "flag": 0, "attribute": 0,
              "name": "", "is_default_name": True}]
 
@@ -376,11 +635,80 @@ def _text_track(caps, rate, y):
     return track, {"texts": materials, "material_animations": [anim]}
 
 
-def build_draft(ctx, pieces, version=PINNED, caps=None, cards=None, cues=None):
+def _label_items(x):
+    """The segments one plan.json "texts" entry makes: a title or cta as one text segment (a cta's
+    label on its first line), a user-typed label as it was typed, a list as one per line, numbered
+    and held to the list's end. Seconds on the cut; x and y are the box's centre in % of the frame,
+    since the plan gives title and list boxes by their top edge and a text segment is placed by its
+    centre. A `stamp` is a drawn X with no words: no native text segment can carry it, so it is
+    skipped."""
+    size = x.get("size_pct") or 2.0
+    if x.get("kind") == "list":
+        out = []
+        for j, it in enumerate(x.get("items") or []):
+            if not it.get("text"):
+                continue
+            at = max(x.get("start", 0), it.get("at", x.get("start", 0)))
+            w = (3 + len(it["text"])) * 0.55 * size * 16 / 9   # as plan.py measures
+            out.append((f"{j + 1}. {it['text']}", at, x.get("end", at), x.get("x_pct", 0) + w / 2,
+                        x.get("y_pct", 50) + (j + 0.5) * 1.3 * size))
+        return out
+    if x.get("kind") == "label" and x.get("text"):
+        # the user's typed text (texts.json, plan.py typed_texts): x_pct/y_pct are already its centre,
+        # as Remotion places it. Its plain/outline/box look is not carried - a native text takes
+        # CapCut's own styling, one applied to all of them.
+        return [(x["text"], x.get("start", 0), x.get("end", 0), x.get("x_pct", 50), x.get("y_pct", 50))]
+    if x.get("kind") in ("title", "cta") and x.get("text"):
+        text = f"{x['label']}\n{x['text']}" if x.get("label") else x["text"]
+        # the box height as plan.py's title_bottom() measures it (74% wide, bold, 1.15 em a line,
+        # plus 0.5 em of padding): half of it puts the text segment's centre inside the box
+        per = max(8, int(74 * 1080 / 100 / (0.55 * size / 100 * 1920)))
+        n = sum(max(1, math.ceil(len(ln) / per)) for ln in text.split("\n"))
+        return [(text, x.get("start", 0), x.get("end", 0), 50,
+                 x.get("y_pct", 50) + (n * 1.15 + 0.5) * size / 2)]
+    return []
+
+
+def _labels_tracks(labels, rate):
+    """plan.json "texts" - the words besides the captions - as text tracks over the cards, one
+    track per item because a list's lines, or a cta over a title, overlap and one text track may
+    not. Times are seconds on the cut; x and y map like a caption's position."""
+    tracks, texts, anims = [], [], []
+    for x in labels or []:
+        for text, start, end, x_pct, y_pct in _label_items(x):
+            if end <= start:
+                continue
+            # the plan's seconds to exact µs: _us takes frames
+            start_us, end_us = _us(start * rate[0] / rate[1], rate), _us(end * rate[0] / rate[1], rate)
+            anim = {"id": _uid(), "type": "sticker_animation", "animations": [],
+                    "multi_language_current": "none"}
+            mid = _uid()
+            texts.append(_text_material(mid, text))
+            anims.append(anim)
+            tracks.append({"id": _uid(), "type": "text", "flag": 1, "attribute": 0, "name": "",
+                           "is_default_name": True, "segments": [
+                               _text_segment(_uid(), mid, anim["id"], start_us, end_us,
+                                             (0.5 - y_pct / 100) * 2, (x_pct / 100 - 0.5) * 2)]})
+    return tracks, {"texts": texts, "material_animations": anims}
+
+
+def _merge(*parts):
+    """Materials buckets from several builders, concatenated: two builders may fill the same one."""
+    out = {}
+    for part in parts:
+        for k, v in part.items():
+            out.setdefault(k, []).extend(v)
+    return out
+
+
+def build_draft(ctx, pieces, version=PINNED, caps=None, cards=None, cues=None, audio=None,
+                labels=None):
     """The draft_info.json object: one video track, one segment per piece, and when `caps` is given
-    one text track of caption pages; when `cards` is given, one overlay video track per used lane
-    and when `cues` is given one audio track (issue #7). `pieces` are dicts with path, width and
-    height (from ensure_pieces); ctx["segs"] gives each span's timeline start and length."""
+    one text track of caption pages; when `cards` is given, one overlay video track per used lane;
+    when `cues` is given one audio track (issue #7); when `audio` is given, the cut's own audio as
+    one more track (a draft without it opens silent); when `labels` is given (the plan's "texts"), a
+    text track per title, cta and list line. `pieces` are dicts with path, width and height (from
+    ensure_pieces); ctx["segs"] gives each span's timeline start and length."""
     rate = ctx["rate"]
     assert len(pieces) == len(ctx["segs"]), f"{len(pieces)} pieces for {len(ctx['segs'])} kept spans"
     materials = {bucket: [] for bucket in AUX}
@@ -390,7 +718,9 @@ def build_draft(ctx, pieces, version=PINNED, caps=None, cards=None, cues=None):
     materials["audio_fades"] = []
     materials["beats"] = []
     text_track, text_materials = _text_track(caps, rate, _caption_y(ctx)) if caps else (None, {})
+    label_tracks, label_materials = _labels_tracks(labels, rate)
     card_tracks = _card_tracks(cards, rate, (ctx["plan"]["width"], ctx["plan"]["height"]), materials)
+    audio_tracks = _cut_audio_track(audio, materials) if audio else []
     cue_tracks = _cues_track(cues, rate, materials) if cues else []
     segments, frame = [], 0
     for (_, _, length), piece in zip(ctx["segs"], pieces):
@@ -420,9 +750,11 @@ def build_draft(ctx, pieces, version=PINNED, caps=None, cards=None, cues=None):
     timeline = _us(frame, rate)
     track = {"id": _uid(), "type": "video", "segments": segments, "flag": 0, "attribute": 0,
              "name": "", "is_default_name": True}
-    # a card whose tail (or a cue) runs past the cut's last frame stretches the timeline
+    # a card whose tail (or a cue, or the cut audio's rounded length) runs past the cut's last
+    # frame stretches the timeline
     timeline = max([timeline] + [s["target_timerange"]["start"] + s["target_timerange"]["duration"]
-                                 for tr in card_tracks + cue_tracks for s in tr["segments"]])
+                                 for tr in card_tracks + audio_tracks + cue_tracks + label_tracks
+                                 for s in tr["segments"]])
     now = int(time.time())
     platform = {"os": "mac" if sys.platform == "darwin" else
                 ("windows" if sys.platform.startswith("win") else sys.platform),
@@ -437,8 +769,10 @@ def build_draft(ctx, pieces, version=PINNED, caps=None, cards=None, cues=None):
                    "multi_language_mode": "none", "use_float_render": False, "hdr_vivid": False},
         "canvas_config": {"ratio": "original", "width": ctx["plan"]["width"],
                           "height": ctx["plan"]["height"], "background": None},
-        "tracks": [track] + card_tracks + cue_tracks + ([text_track] if text_track else []),
-        "materials": {**materials, **text_materials}, "relationships": [], "platform": platform,
+        "tracks": [track] + card_tracks + audio_tracks + cue_tracks + label_tracks
+                  + ([text_track] if text_track else []),
+        "materials": _merge(materials, text_materials, label_materials),
+        "relationships": [], "platform": platform,
         "last_modified_platform": platform, "mixed_track_mode_on": False,
         "render_index_track_mode_on": True, "free_render_index_mode_on": False,
         "source": "default", "path": "", "draft_type": "video",
@@ -565,6 +899,39 @@ def demo():
         assert d70["tracks"][-1]["segments"][0]["clip"]["transform"]["y"] == (0.5 - 70 / 100) * 2
         check_draft(d, export)
 
+        # --- labels: the plan's "texts" (titles, cta, list lines), each on its own track ---
+        labels = [{"kind": "title", "text": "Essential\nLine Classic", "start": 0.0, "end": 1.5,
+                   "y_pct": 62.6, "size_pct": 3.0},
+                  {"kind": "cta", "text": "เม้น", "label": "รุ่นไหนต่อ", "start": 1.0, "end": 1.5,
+                   "y_pct": 16.1, "size_pct": 5.2},
+                  {"kind": "list", "items": [{"text": "หนึ่ง", "at": 0.0}, {"text": "สอง", "at": 0.5}],
+                   "start": 0.0, "end": 1.5, "x_pct": 14.0, "y_pct": 40.0, "size_pct": 2.0},
+                  {"kind": "stamp", "start": 0.0, "end": 1.0, "box": [0, 0, 100, 100]},
+                  # the user's own typed text (texts.json): already centred on x_pct/y_pct
+                  {"kind": "label", "text": "wait for it", "start": 0.5, "end": 1.0,
+                   "style": "box", "x_pct": 40.0, "y_pct": 30.0, "size_pct": 6.0}]
+        d = build_draft(ctx, pieces, caps=caps, labels=labels)
+        lt = [t for t in d["tracks"] if t["type"] == "text"][:-1]   # the caption track comes last
+        assert len(lt) == 5   # title, cta, two list lines, the typed label; the stamp has no words and is skipped
+        assert all(len(t["segments"]) == 1 for t in lt)
+        assert len(d["materials"]["texts"]) == len(caps) + 5
+        assert len(d["materials"]["material_animations"]) == 1 + 5   # one shared for all captions
+        contents = [json.loads(m["content"])["text"] for m in d["materials"]["texts"]]
+        assert "รุ่นไหนต่อ\nเม้น" in contents and "1. หนึ่ง" in contents and "2. สอง" in contents
+        assert "Essential\nLine Classic" in contents and "wait for it" in contents
+        lab = lt[4]["segments"][0]
+        assert lab["target_timerange"] == {"start": 500_000, "duration": 500_000}
+        assert lab["clip"]["transform"] == {"x": (40 / 100 - 0.5) * 2, "y": (0.5 - 30 / 100) * 2}
+        # plan seconds -> exact µs (1.5 s is 1_500_000, not 1_501_500: no frame drift), and the
+        # plan's y_pct in CapCut's half-canvas units
+        assert lt[0]["segments"][0]["target_timerange"] == {"start": 0, "duration": 1_500_000}
+        # a title's y_pct is its box's top edge: the segment sits at the box's centre (2 lines,
+        # 3% type, so (2 * 1.15 + 0.5) * 3 = 8.4% tall)
+        assert lt[0]["segments"][0]["clip"]["transform"]["y"] == (0.5 - (62.6 + 8.4 / 2) / 100) * 2
+        assert lt[2]["segments"][0]["target_timerange"] == {"start": 0, "duration": 1_500_000}
+        assert lt[3]["segments"][0]["target_timerange"]["start"] == 500_000   # 0.5 s
+        check_draft(d, export)
+
         # --- cards: one overlay track per lane above the main one, each card at its rect ---
         # A card that did not render (kind missing) stays a hand step and is not in the draft.
         cards = [{"i": 1, "kind": "video", "path": media / "card-01.mov", "start_f": 0, "len_f": 60,
@@ -592,6 +959,10 @@ def demo():
         m = next(mm for mm in d["materials"]["videos"] if mm["id"] == hook["material_id"])
         assert Path(m["path"]).name == "card-01.mov" and (m["width"], m["height"]) == (800, 400)
         assert segs2[0]["target_timerange"] == {"start": 500_500, "duration": 500_500}
+        # a still is a "photo" material: as "image" CapCut kept the clip on the timeline and drew
+        # nothing (issue #8's install check)
+        still = next(mm for mm in d["materials"]["images"] if mm["id"] == segs2[0]["material_id"])
+        assert still["type"] == "photo"
         assert next(mm["path"] for mm in d["materials"]["images"]) == str((media / "card-02.png").resolve())
         check_draft(d, export)
         # a mov card without its alpha matte beside it is rejected: CapCut reads the matte there
@@ -679,6 +1050,77 @@ def demo():
         assert [p["path"] for p in ensure_pieces(ctx, media, probe=lambda p: {"width": 1, "height": 1},
                                                  fill=lambda: filled.append(2))] == [p["path"] for p in got]
         assert filled == [1]
+
+        # --- the cut's audio: one file from cut.mp4, because the cached pieces are video-only ---
+        cut = edit / "cut.mp4"
+        cut.write_bytes(b"cut")
+        took = []
+        aud = ensure_audio(ctx, media, probe=lambda p: (1.5, 2),
+                           extract=lambda s, dst: (took.append((s, dst)), dst.write_bytes(b"aac")))
+        assert aud == {"path": media / "cut-audio.m4a", "duration": 1_500_000}, aud
+        assert took == [(cut, media / "cut-audio.m4a")]
+        # no audio stream on the cut: no audio track, never a silent segment of zero length
+        assert ensure_audio(ctx, media, probe=lambda p: (1.5, None), extract=lambda s, d: None) is None
+        d_audio = build_draft(ctx, got, audio=aud)
+        at = next(t for t in d_audio["tracks"] if t["type"] == "audio")
+        assert len(at["segments"]) == 1
+        assert at["segments"][0]["target_timerange"] == {"start": 0, "duration": 1_500_000}
+        assert len(at["segments"][0]["extra_material_refs"]) == 6
+        check_draft(d_audio, export)
+
+        # --- install: copy into the project store, re-point media, write meta, add the root entry ---
+        store = Path(td) / "store"
+        store.mkdir()
+        (store / "root_meta_info.json").write_text(
+            json.dumps({"draft_ids": 7, "root_path": str(store), "all_draft_store": []}), encoding="utf-8")
+        src = Path(td) / "export" / "capcut" / "demo"
+        (src / "draft_info.json").write_text(json.dumps(build_draft(ctx, got), ensure_ascii=False),
+                                             encoding="utf-8")
+        # CapCut up: refuse, because its quit rewrites the store over ours
+        assert exits(install, src, store, running=lambda: True)
+        # no draft_info.json: that is not a draft
+        assert exits(install, Path(td) / "nowhere", store, running=lambda: False)
+        installed = install(src, store, running=lambda: False)
+        assert installed == (store / "demo").resolve()
+        meta = json.loads((installed / "draft_meta_info.json").read_text(encoding="utf-8"))
+        assert meta["draft_name"] == "demo" and meta["draft_id"]
+        assert meta["draft_fold_path"] == str(installed) and meta["draft_root_path"] == str(store.resolve())
+        assert meta["tm_duration"] == json.loads((src / "draft_info.json").read_text(encoding="utf-8"))["duration"]
+        # the media panel lists the files itself; with an empty list CapCut opened the draft with
+        # an empty import section (issue #8's install check), so the paths must be relative copies
+        panel = meta["draft_materials"][0]["value"]
+        assert [(m["file_Path"], m["metetype"]) for m in panel] == \
+            [("./media/seg-01.mp4", "video"), ("./media/seg-02.mp4", "video")], panel
+        # the media is re-pointed at the copy, so the export folder can be deleted afterwards
+        info = json.loads((installed / "draft_info.json").read_text(encoding="utf-8"))
+        assert all(Path(m["path"]).is_file() and installed in Path(m["path"]).parents
+                   for m in info["materials"]["videos"]), info["materials"]["videos"]
+        assert (installed / "media" / "seg-01.mp4").read_bytes() == b"one"
+        # the root entry is appended and the previous file is kept
+        root = json.loads((store / "root_meta_info.json").read_text(encoding="utf-8"))
+        assert root["draft_ids"] == 7 and len(root["all_draft_store"]) == 1
+        e = root["all_draft_store"][0]
+        assert e["draft_name"] == "demo" and e["draft_fold_path"] == str(installed)
+        assert e["draft_json_file"] == str(installed / "draft_info.json")
+        assert (store / "root_meta_info.json.bak").is_file()
+        # a collision never overwrites: it stops and names the first free suffix
+        try:
+            install(src, store, running=lambda: False)
+        except SystemExit as err:
+            assert "demo-2" in str(err), err
+        else:
+            raise AssertionError("an existing draft name must be refused")
+        assert (installed / "media" / "seg-01.mp4").read_bytes() == b"one"
+        alt = install(src, store, name="demo-2", running=lambda: False)
+        assert alt.name == "demo-2"
+        assert json.loads((alt / "draft_info.json").read_text(encoding="utf-8"))["name"] == "demo-2"
+        assert len(json.loads((store / "root_meta_info.json").read_text(encoding="utf-8"))["all_draft_store"]) == 2
+        # a store CapCut has never written yet: the folder is installed, its startup scan indexes it
+        fresh = Path(td) / "fresh"
+        fresh.mkdir()
+        install(src, fresh, name="solo", running=lambda: False)
+        assert (fresh / "solo" / "draft_meta_info.json").is_file()
+        assert not (fresh / "root_meta_info.json").exists()
     print("demo ok")
 
 
@@ -691,6 +1133,23 @@ def breaks(fn, *args):
     return False
 
 
+def exits(fn, *args, **kwargs):
+    """True when the call refuses with a SystemExit message."""
+    try:
+        fn(*args, **kwargs)
+    except SystemExit:
+        return True
+    return False
+
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["demo"]:
         demo()
+    elif sys.argv[1:2] == ["install"]:
+        ap = argparse.ArgumentParser(description="Install a generated CapCut draft into the project store.")
+        ap.add_argument("draft", help="the draft folder written by export_nle.py --to capcut")
+        ap.add_argument("--name", help="project name (default: the folder's name)")
+        a = ap.parse_args(sys.argv[2:])
+        print(install(a.draft, name=a.name))
+    else:
+        sys.exit(__doc__)

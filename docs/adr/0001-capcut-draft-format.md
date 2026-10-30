@@ -47,20 +47,40 @@ segment on a text track, and stable copies in `media/`.
   No font, size, colour or stroke from the plan: the material carries CapCut's own plain subtitle
   defaults, as seen in a real auto-caption draft (1017), so the user styles once inside CapCut. The
   `.srt` stays unchanged for anyone who prefers CapCut's Add-captions import.
+- The plan's `texts` (title, cta, list lines: the words besides the captions) become text segments
+  too, one track per item because a list's lines and a cta over a title overlap and one text track may
+  not. Times are the plan's seconds on the cut, placed by `y_pct` (and `x_pct` as a centre) like a
+  caption. Same rule as captions: plain defaults, restyle once inside CapCut. A `stamp` is a drawn X
+  with no words, so it stays a hand step.
 - Cards become overlay video tracks above the main one, one per lane so overlapping cards stay legal
   (issue #7). A card that renders nothing is not a segment: it stays a hand step. An animated card
   is its ProRes `.mov` with a grayscale matte beside it, `card-01.mov.alpha.mp4`: the loader's only
   alpha mechanism is the sibling `<file>.alpha.mp4` (`lvve::isHasAlphaFile`), so move the pair
-  together. A still card is its `.png` as an image material. Two things the local drafts could not
+  together. A still card is its `.png` as a `photo` material (as `image`, CapCut kept the clip on
+  the timeline and drew nothing: found in issue #8's install check). Two things the local drafts could not
   prove (no overlay or image sample exists); the CapCut smoke test decides, and the `.png` still is
   the documented fallback: whether the decoder keeps in-band alpha from a `.mov`, and whether a
   clip's scale 1.0 means fitted-inside-the-canvas. The card's `scale = max(w/W, h/H)` places the
   box-sized material at its box size under that reading.
+- The cut's own audio becomes one more audio track, one segment at time 0: the `.segments` cache
+  is video-only (`render.py` encodes spans with `-an`) and `cut.mp4` mixes its audio from those same
+  spans with the same joins and fades, so `media/cut-audio.m4a` stays in sync under the pieces.
+  Without it the draft opened silent (found in issue #8's install check).
 - Sound cues become one audio track in the shape of a real local-music draft (0315 (2)): type
   `extract_music`, six refs including fade and beats, gaps allowed, `volume 1.0` because the level
   is already set in the rendered media (sfx.py).
 - Keep `CAPCUT.md` as the by-hand path: the caption styling, the cards that did not render, and the
   re-install note for the `.mov` plus matte pairs.
+- `capcut_draft.py install` does the hand-off (issue #8): it copies the generated folder into the
+  project store with CapCut closed, writes the `draft_meta_info.json` the startup scan needs beside
+  `draft_info.json`, lists every media file in `draft_meta_info.json`'s type-0 `draft_materials`
+  (CapCut's media panel reads only that list: empty, the draft opened with an empty import section
+  while its timeline played), re-points every media path under the copied folder, and appends the
+  project entry to `root_meta_info.json` after keeping a `.bak`. A taken name stops and offers the first free
+  numeric suffix; nothing is overwritten. The app is refused while running, because its quit
+  rewrite wins. The user then opens CapCut once and confirms the draft lists, the pieces cut at the
+  joins and the captions, cards and cues are editable: the acceptance test no agent can run, and the
+  one to repeat after a CapCut update.
 
 ## Consequences
 
@@ -68,7 +88,8 @@ segment on a text track, and stable copies in `media/`.
 - A CapCut update can invalidate the writer. The guard turns that into a clear refusal instead of a
   broken project. Re-probe the loader (issue #4's method) before raising `PINNED`.
 - Drafts are installed with CapCut closed: writing into the live project store can be overwritten
-  when CapCut quits. Installation is a later issue.
-- The draft now carries the cut, the caption pages, the rendered cards and the sound cues; only
-  installation (issue #8) remains. The schema will grow, so re-run `capcut_draft.py demo` after
-  those changes.
+  when CapCut quits.
+- The draft carries the cut, the caption pages, the plan's titles (cta, list lines), the rendered
+  cards and the sound cues, and installs
+  into the project list. The schema will grow, so re-run `capcut_draft.py demo` after those changes,
+  and repeat the in-person CapCut check after an app update.

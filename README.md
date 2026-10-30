@@ -264,6 +264,7 @@ Your styles, skills and settings live in your library folder, not in the plugin,
 |---|---|---|
 | `start` | "edit my video", "make my video look like @creator", "new video" | a video file path; a Google Drive, Dropbox or OneDrive share link; a YouTube or TikTok link; a creator profile |
 | `setup` | "set up the editor", "finish setup", "add my Gemini key", "set up Modal" | |
+| `talking-head` | "talking head", "edit my talking-head video", "fast cut of my take" | a video file path |
 | `creator-teardown` | "break down @creator", "tear down @creator" | a TikTok, YouTube or Instagram profile, or single video links |
 | `cut` | "cut my video", "remove my mistakes" | a video file path |
 | `style-edit` | "style it", "add captions and zooms", "render the edit", "export to Final Cut" (or Premiere, Resolve, CapCut) | |

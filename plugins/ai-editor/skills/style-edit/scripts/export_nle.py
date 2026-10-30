@@ -10,7 +10,8 @@
   NAME.fcpxml     FCPXML 1.10: Final Cut Pro 10.6+ and DaVinci Resolve 18+ (File > Import > Timeline)
   NAME.xml        FCP7 XML (xmeml 4): Premiere Pro (File > Import); Resolve reads it too
   NAME.edl        CMX3600, the cut only (one video track, no cards, no captions)
-  CAPCUT.md       the draft folder, then the by-hand steps and every card's time and place
+  CAPCUT.md       the install command, the in-person check, then the by-hand steps and every card's
+                  time and place
   capcut/NAME/    a CapCut desktop draft: draft_info.json (the cut's pieces on the main track)
                   and media/seg-01.mp4... (stable copies; cold cache is filled with render.py)
   media/          card-NN.png (a plain capture fitted to its box), card-NN.mov (a card that moves:
@@ -567,27 +568,44 @@ def capcut(ctx, cards, sfx, draft_dir=None, caps=None):
     srows = [f"| {Path(s['path']).name} | {secs(s['start_f'])} |" for s in sfx]
     where = (f"A draft is at `{draft_dir.relative_to(ctx['edit']).as_posix()}/draft_info.json`: the cut's "
              f"{len(ctx['segs'])} pieces on the main track, the {len(caps or [])} caption pages on a text track, "
-             f"the {sum(1 for c in cards if c.get('path'))} cards on overlay tracks and the {len(sfx)} sound cues "
-             "on an audio track, each piece a stable copy in `media/`. Close CapCut before copying the folder "
-             "into its project store: CapCut rewrites the store on quit."
+             f"the plan's titles, cta and list lines on text tracks of their own, "
+             f"the {sum(1 for c in cards if c.get('path'))} cards on overlay tracks, the cut's own audio "
+             f"and the {len(sfx)} sound cues on audio tracks, each piece a stable copy in `media/`. The "
+             "pieces are video-only, so the speech comes from `media/cut-audio.m4a`."
              if draft_dir else "A draft folder is written beside this file.")
-    first = (f"1. Open the draft in CapCut: close CapCut, copy `{draft_dir.relative_to(ctx['edit']).as_posix()}/` "
-             "into its project store, then start CapCut. The cut is already on the main track."
-             if draft_dir else
-             f"1. New project, {W}x{H}. Import `{ctx['edit'] / 'cut.mp4'}` (the jump cut, already trimmed) and "
-             "the `media/` folder, and drop the cut on the main track.")
+    if draft_dir:
+        script = Path(__file__).resolve().parent / "capcut_draft.py"
+        first = (f"1. Close CapCut, then install the draft:\n"
+                 f"   `python3 {script} install {draft_dir}`\n"
+                 "   It copies the folder into CapCut's project store, writes the metadata its startup scan "
+                 "looks for and adds the project to the list. It never overwrites: a taken name stops it and "
+                 "it prints a free one; re-run with `--name <that>`. It refuses while CapCut is running, "
+                 "because CapCut rewrites the store on quit.")
+        verify = ("2. Start CapCut: the draft is in the project list. Open it and check, in person, that the "
+                  "pieces cut at the joins, the caption pages and the plan's titles are editable, the cards "
+                  "sit on their overlay tracks and the cues on the audio track. This is the one acceptance "
+                  "test no agent can run. "
+                  "After a CapCut update: the export refuses when your own drafts are newer, so re-check the "
+                  "writer, install, and repeat this list.")
+        n = 3
+    else:
+        first = (f"1. New project, {W}x{H}. Import `{ctx['edit'] / 'cut.mp4'}` (the jump cut, already "
+                 "trimmed) and the `media/` folder, and drop the cut on the main track.")
+        verify, n = "", 2
     return "\n".join([
         f"# {ctx['name']} in CapCut", "",
         where, "",
         "The draft carries the cut, the captions, the rendered cards and the sound cues. What stays "
         "for hand work:", "",
-        first,
-        "2. Style one caption page (font, size, colour); CapCut applies it to all. Prefer importing "
+        first, *([verify] if verify else []),
+        f"{n}. Style one caption page (font, size, colour); CapCut applies it to all. Prefer importing "
         "by hand instead? Captions > Add captions > " f"pick `{ctx['name']}.srt`.",
-        "3. A card marked (not rendered) below: place it from the table as an overlay track. Rendered "
+        f"{n + 1}. A card marked (not rendered) below: place it from the table as an overlay track. Rendered "
         "cards are already on their overlay tracks; an animated one is a .mov with its alpha matte "
-        "beside it (card-01.mov.alpha.mp4), so move the pair together if the draft is reinstalled.",
-        "4. A sound cue is on the audio track at its time, level already set in the rendered media.", "",
+        "beside it (card-01.mov.alpha.mp4), so keep the pair together (the install command copies the "
+        "whole folder).",
+        f"{n + 2}. The speech is on its own audio track (`cut-audio.m4a`, the cut's own audio); each "
+        f"sound cue is on another at its time, level already set in the rendered media.", "",
         "| card | file | start s | end s | centre x y | width |", "|---|---|---|---|---|---|", *rows, "",
         "| sound | start s |", "|---|---|", *srows, ""])
 
@@ -641,8 +659,12 @@ def export(ctx, out, todo, render):
     if "capcut" in todo:
         draft_dir = out / "capcut" / ctx["name"]
         pieces = capcut_draft.ensure_pieces(ctx, draft_dir / "media", probe=probe)
+        # the pieces are video-only, so the cut's own audio goes beside them or the draft is silent
+        audio = capcut_draft.ensure_audio(ctx, draft_dir / "media")
         cards, cues = _draft_media(cards, sfx, draft_dir / "media")
-        draft = capcut_draft.build_draft(ctx, pieces, capcut_version, caps=caps, cards=cards, cues=cues)
+        draft = capcut_draft.build_draft(ctx, pieces, capcut_version, caps=caps, cards=cards,
+                                         cues=cues, audio=audio,
+                                         labels=ctx["plan"].get("texts"))
         capcut_draft.check_draft(draft, out)
         (draft_dir / "draft_info.json").write_text(json.dumps(draft, ensure_ascii=False, indent=1),
                                                    encoding="utf-8")
@@ -676,7 +698,9 @@ def demo():
                      "cards": [{"start": 0.5, "end": 2.0, "anim": {"type": "pop"}, "trigger_word": "hook"},
                                {"start": 1.0, "end": 3.5, "src": "card.png", "box": [10, 20, 40, 25],
                                 "trigger_word": "still"}],
-                     "sfx": [{"src": "sfx.wav", "t": 2.0}]}})
+                     "sfx": [{"src": "sfx.wav", "t": 2.0}],
+                     "texts": [{"kind": "title", "text": "Hook\nTitle", "start": 0.5, "end": 2.0,
+                                "y_pct": 60.0, "size_pct": 3.0}]}})
         # the raw card pieces the demo's plan names (a card that is not rendered is a hand step)
         plan_path = d / "plan.json"; plan_path.write_text("{}", encoding="utf-8")
         ctx["plan_path"] = plan_path
@@ -740,6 +764,10 @@ def demo():
             subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i",
                             "color=c=black:s=108x192:r=30:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p",
                             str(segs / n)], check=True)
+        # the pieces are video-only; the cut's own audio is what the draft must carry
+        ffmpeg("-f", "lavfi", "-i", "color=c=black:s=108x192:r=30:d=4",
+               "-f", "lavfi", "-i", "sine=f=440:d=4", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+               "-c:a", "aac", "-shortest", d / "cut.mp4")
         os.environ["CAPCUT_DRAFT_ROOT"] = str(d / "capcut-drafts")   # a fresh machine: no drafts yet
         try:
             export(ctx, d / "export", {"capcut"}, False)
@@ -751,11 +779,15 @@ def demo():
         assert info["new_version"] == "187.0.0" and len(info["tracks"][0]["segments"]) == 2
         # and the captions as native texts: one segment per srt cue at the plan's 70%-line
         tt = info["tracks"][-1]
-        assert tt["type"] == "text" and [json.loads(m["content"])["text"]
-                                         for m in info["materials"]["texts"]] == \
-            ["hello there", "after the cut"]
+        texts = [json.loads(m["content"])["text"] for m in info["materials"]["texts"]]
+        assert tt["type"] == "text" and texts[:2] == ["hello there", "after the cut"]
         assert [s["target_timerange"]["duration"] for s in tt["segments"]] == [1_000_000, 800_000]
         assert tt["segments"][0]["clip"]["transform"]["y"] == (0.5 - 70 / 100) * 2
+        # the plan's "texts" as their own text track, seconds on the cut and the plan's y_pct
+        lt = [t for t in info["tracks"] if t["type"] == "text"][:-1]
+        assert "Hook\nTitle" in texts and len(lt) == 1
+        assert lt[0]["segments"][0]["target_timerange"] == {"start": 500_000, "duration": 1_500_000}
+        assert lt[0]["segments"][0]["clip"]["transform"]["y"] == (0.5 - (60 + 8.4 / 2) / 100) * 2
         # the cards as overlays, the cue on an audio track: stable copies in the draft's media
         vtracks = [t for t in info["tracks"] if t["type"] == "video"]
         assert len(vtracks) == 3   # main + one overlay per lane (the two cards overlap)
@@ -767,10 +799,18 @@ def demo():
         assert still["target_timerange"] == {"start": 1_000_000, "duration": 2_500_000}  # frames 30, 105
         assert still["clip"]["transform"] == {"x": -0.4, "y": 0.35}   # box centre (10..50%, 20..45%)
         assert still["clip"]["scale"] == {"x": 0.4, "y": 0.4}
-        cue = next(t for t in info["tracks"] if t["type"] == "audio")["segments"][0]
+        # the cut's own audio on its own track, then the cue: without the first the draft is silent
+        audios = [t for t in info["tracks"] if t["type"] == "audio"]
+        assert len(audios) == 2
+        cut_audio = audios[0]["segments"][0]
+        assert cut_audio["target_timerange"] == {"start": 0, "duration": 4_000_000}
+        cut_audio_mat = next(m for m in info["materials"]["audios"]
+                             if m["id"] == cut_audio["material_id"])
+        assert Path(cut_audio_mat["path"]).name == "cut-audio.m4a"
+        cue = audios[1]["segments"][0]
         assert cue["target_timerange"] == {"start": 2_000_000, "duration": 1_000_000}   # frame 60, 1 s
         names = sorted(p.name for p in (draft_dir / "media").iterdir())
-        assert names == ["card-01.mov", "card-01.mov.alpha.mp4", "card-02.png",
+        assert names == ["card-01.mov", "card-01.mov.alpha.mp4", "card-02.png", "cut-audio.m4a",
                          "seg-01.mp4", "seg-02.mp4", "sfx-01.wav"], names
         assert (draft_dir / "media" / "card-01.mov.alpha.mp4").stat().st_size > 0
         capcut_draft.check_draft(info, d / "export")
@@ -781,6 +821,8 @@ def demo():
         # the draft carries the cards and cues: the md says what already ships and what is hand
         assert "overlay track" in capcut_md and "audio track" in capcut_md
         assert "not rendered" in capcut_md   # a card that did not render stays a hand step
+        # the install command and the in-person check: the user is the only verifier of a real open
+        assert "capcut_draft.py install" in capcut_md and "acceptance test no agent can run" in capcut_md
     print("demo ok")
 
 
