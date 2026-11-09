@@ -85,10 +85,10 @@ DEFAULT_BOX = {"9:16": [10, 15, 74, 20], "16:9": [54, 10, 40, 48]}
 # Where the app's own UI sits, in percent: left, top, right, bottom. Vertical: the
 # TikTok/Reels/Shorts top bar, the like/comment/share rail on the right and the
 # caption/username block at the bottom. Wide: YouTube's progress bar.
-# Vertical is the reels safe zone, x 60-940 and y 250-1440 of 1080x1920 (rounded inwards): nothing a plan draws
+# Vertical is the reels safe zone, x 30-1010 and y 150-1640 of 1080x1920 (rounded inwards; Max made it smaller 2026-11-06): nothing a plan draws
 # (cards, overlays, logos, captions, scene content) goes outside it. Cards centred on the frame keep the wider
 # side margin on both sides (x 140-940).
-SAFE = {"9:16": (5.6, 13.1, 13.0, 25.0), "16:9": (3, 5, 3, 10)}
+SAFE = {"9:16": (2.8, 7.9, 6.5, 14.6), "16:9": (3, 5, 3, 10)}   # l, t, r, b in % of the frame
 # Vertical overlays beside the head (free_regions) may reach the safe zone's left edge; the band above the head
 # is centred, so it keeps the wider margin. check.py plan allows the same.
 OVERLAY_TOP, OVERLAY_EDGE = SAFE["9:16"][1], SAFE["9:16"][0]
@@ -780,7 +780,7 @@ def text_labels(cards, style):
 
 # A card edit's words besides the captions (visuals.json "title", "cta", "list", "stamp" beats; remotion Texts.tsx). % of the frame.
 # The title: one plain white box, black bold type, tight to the words, on the lower chest with its bottom on the safe
-# zone's bottom line (y 1440); captions wait while it is up. The cta: a black pill with white type in the band above the head.
+# zone's bottom line (y 1640); captions wait while it is up. The cta: a black pill with white type in the band above the head.
 TITLE_SIZE, TITLE_HOLD_S = 3.0, 3.8
 TITLE_BOTTOM = 100 - SAFE["9:16"][3] - 0.5
 CTA_Y, CTA_SIZE, CTA_HOLD_S = SAFE["9:16"][1] + 3, 5.2, 2.4
@@ -866,10 +866,16 @@ def placed_sounds(plan, edit_dir):
         return plan
     import sfx
     fps = plan.get("fps") or 30
-    for x in json.loads(f.read_text(encoding="utf-8")).get("items") or []:
-        try:
-            src, att = sfx.own_cue(edit_dir, x["sound"])
-        except (ValueError, KeyError, OSError) as e:
+    from preview import laned, read_ov   # a muted Sounds lane on the timeline (overrides.json lanes) leaves its sounds out
+    from preview import gained   # a library sound turned up or down on the page's inspector (sounds.json vol)
+    for x in laned(json.loads(f.read_text(encoding="utf-8")).get("items") or [], read_ov(edit_dir), "snd", lambda x: x.get("id")):
+        if x.get("muted") or x.get("kind") != "clip" and x.get("vol") == 0:   # muted on the inspector: out of the video
+            continue
+        try:   # a dropped audio file plays from its moment; a library sound lands its hit there
+            src, att = (sfx.clip_cue(edit_dir, x), 0.0) if x.get("kind") == "clip" else sfx.own_cue(edit_dir, x["sound"])
+            if x.get("kind") != "clip" and x.get("vol", 1) != 1:
+                src = gained(edit_dir, src, round(20 * math.log10(float(x["vol"])), 1))
+        except (ValueError, KeyError, OSError, subprocess.CalledProcessError) as e:
             print(f"warning: a placed sound was skipped: {e}", file=sys.stderr)
             continue
         t = float(x["t"])
@@ -886,7 +892,11 @@ def typed_texts(edit_dir):
     if not f or not f.exists():
         return []
     keep = ("text", "style", "start", "end", "x_pct", "y_pct", "size_pct")
-    return [{"kind": "label", **{k: x[k] for k in keep}} for x in json.loads(f.read_text(encoding="utf-8")).get("items") or []]
+    extra = ("font", "color", "width_pct", "rotation", "opacity", "anim", "align", "text_color")   # set only when the user picked
+    # them (review.py text_look, text_more)
+    from preview import laned, read_ov   # the Text lanes: a hidden one's texts out, a later lane's drawn on top
+    return [{"kind": "label", **{k: x[k] for k in keep}, **{k: x[k] for k in extra if x.get(k) is not None}}
+            for x in laned(json.loads(f.read_text(encoding="utf-8")).get("items") or [], read_ov(edit_dir), "text", lambda x: x.get("id"))]
 
 
 def under_titles(cards, texts):
@@ -2018,8 +2028,8 @@ def split_cards(cards, art):
 
 # Letterbox layout: a black 9:16 frame, the landscape take as a centred band, one lowercase title above it,
 # one word at a time inside the bottom of the band, and one real photo beside the head over the opening line.
-# Pixels of the 1080 x 1920 frame. LB_SAFE: the reels safe zone (x 60-940, y 250-1440): nothing outside it.
-LB_SAFE = (60, 250, 940, 1440)
+# Pixels of the 1080 x 1920 frame. LB_SAFE: the reels safe zone (x 30-1010, y 150-1640): nothing outside it.
+LB_SAFE = (30, 150, 1010, 1640)
 LB_TITLE_X = 140        # title and word side margins: centred, the right edge inside the safe zone
 LB_TITLE_GAP = 24       # the title's last line ends this far above the band
 LB_TITLE_PX = 58
@@ -2480,7 +2490,7 @@ def page_tall(chunks):
 def caption_under_chin(cap, face, aspect, above=False, tall=1.0):
     """Captions never on the face. A vertical caption line that falls inside the head (face.json, the median head
     over the take) moves to the head box's bottom edge, the chin line just below the mouth, held inside the safe
-    zone (its ink above y 1440); with above (the creator's captions sit over her face), to just over the head
+    zone (its ink above y 1640); with above (the creator's captions sit over her face), to just over the head
     when that is inside the safe zone. Changes cap["y_pct"]; returns the chin line (% down) when it moved under
     the chin, else None."""
     hm = aspect == "9:16" and heads_median(face)
@@ -3046,12 +3056,25 @@ def demo():
     assert music_wanted({"sound": {"music": {"present_pct": 30}}}, {}) is False and music_wanted({}, {"sound": {"music": True}}) is True
     assert music_wanted({**snd, "blend": {"take": ["captions"]}}, {}) is False, "sound not taken from that creator"
     demo_punch()
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+    from ai_editor import profile as pm   # the Brand page's kit: roles and font_body reach the look; switched off, nothing
+    kit = {"colors": ["#F8F5F0", "#308DED", "#FA8A45", "#1B1918"], "roles": {"accent": "#FA8A45", "ink": "#1B1918"},
+           "font": "Suisse Neue", "font_body": "FK Grotesk Neue", "kit": "/x/BRAND.md"}
+    lk = pick_look({}, {"brand": kit}, pm)
+    assert lk == {"preset": "neutral", "mark": "#FA8A45", "font": "FK Grotesk Neue", "font_display": "Suisse Neue", "ink": "#1B1918"}, lk
+    assert pick_look({}, {"brand": {**kit, "use_creator": True}}, pm) == {"preset": "neutral"}
+    lk = pick_look({"look": {"preset": "editorial"}}, {"brand": kit}, pm)
+    assert lk["accent"] == "#FA8A45" and lk["ground"] == "#F8F5F0" and lk["font"] == "FK Grotesk Neue", lk
     with tempfile.TemporaryDirectory() as td:   # the review page's typed text (texts.json) goes in as typed
         assert typed_texts(td) == [] and typed_texts(None) == []
         (Path(td) / "texts.json").write_text(json.dumps({"items": [{"id": "edit1-3", "text": "wait for it", "style": "box", "start": 1.0,
                                                                       "end": 4.0, "x_pct": 50, "y_pct": 40, "size_pct": 6}]}), encoding="utf-8")
         assert typed_texts(td) == [{"kind": "label", "text": "wait for it", "style": "box", "start": 1.0, "end": 4.0,
                                     "x_pct": 50, "y_pct": 40, "size_pct": 6}], typed_texts(td)
+        (Path(td) / "texts.json").write_text(json.dumps({"items": [{"id": "t1", "text": "hug", "style": "block", "start": 0, "end": 1,
+            "x_pct": 50, "y_pct": 40, "size_pct": 6, "font": "Anton", "color": "#FFD60A", "width_pct": 60}]}), encoding="utf-8")
+        assert {k: typed_texts(td)[0][k] for k in ("style", "font", "color", "width_pct")} == \
+            {"style": "block", "font": "Anton", "color": "#FFD60A", "width_pct": 60}, typed_texts(td)   # a re-plan keeps the look
     with tempfile.TemporaryDirectory() as td:   # the timeline's placed sounds (sounds.json) join the plan's sfx, in time order
         import sfx
         keep = sfx.own_cue
@@ -3097,20 +3120,20 @@ def demo():
     got = avoid_heads([top, logo, tiny], face, 68, "9:16")
     assert got[0]["box"] == [10, 15, 74, 13], got[0]["box"]           # shrunk to above the head
     lx, ly, lw, lh = got[1]["box"]
-    # logo off the head (no room beside it inside the 14% side margins check.py plan holds: above it); tiny dropped
-    assert (lx + lw <= 30 or lx >= 70 or ly + lh <= 30) and 14 <= lx and lx + lw <= 86 and len(got) == 2, got
+    # logo off the head (no room beside it inside the 14% side margins check.py plan holds: above or below it); tiny dropped
+    assert (lx + lw <= 30 or lx >= 70 or ly + lh <= 30 or ly >= 61) and 14 <= lx and lx + lw <= 86 and len(got) == 2, got
     # placed off the head as drawn: a 1.2 zoom while the card is up grows the head past where face.json has it
     from check import check_plan, on_screen
     zs = [{"start": 0.0, "end": 2.0, "scale": 1.2, "kind": "punch", "ease_s": 0.0}]
-    right = {"step_s": 0.5, "heads": [{"t": 0.0, "box": [36, 30, 30, 30]}]}      # room only on its right
+    right = {"step_s": 0.5, "heads": [{"t": 0.0, "box": [36, 30, 30, 50]}]}      # room only on its right (none below it)
     seen = {**right, "heads": [{**h, "box": on_screen(h["box"], h["t"], {"zooms": zs})} for h in right["heads"]]}
     for f, fails in ((right, True), (seen, False)):
         lg = avoid_heads([{**logo, "box": [42, 50, 16, 9]}], f, 68, "9:16")
         pl = {"width": 1080, "height": 1920, "fps": 30, "durationInFrames": 60, "zooms": zs, "cards": lg,
               "captions": {"style": {"y_pct": 68}, "chunks": []}}
         assert any("covers the head" in x["what"] for x in check_plan(pl, right)) == fails, (f, lg)
-    assert safe_box([6, 3, 88, 27], "9:16") == [13.0, 13.1, 74.0, 22], safe_box([6, 3, 88, 27], "9:16")
-    assert safe_box([50, 90, 20, 10], "9:16")[1] == 65
+    assert safe_box([6, 3, 88, 27], "9:16") == [6.5, 7.9, 87.0, 22], safe_box([6, 3, 88, 27], "9:16")
+    assert safe_box([50, 90, 20, 10], "9:16")[1] == 75.4
     words = []
     t = 0.0
     for i, text in enumerate("so this is how I edit. every video gets zooms and captions now. try notion today."
@@ -3169,7 +3192,7 @@ def demo():
     lg = {"start": 5.0, "end": 6.2, "box": [1, 1, 1, 1], "trigger_word": "l", "lane": "logo", "anim": {"type": "logo"}}
     big = {"start": 0.0, "end": 4.0, "box": [1, 1, 1, 1], "trigger_word": "b"}
     art = split_art_box(50)
-    assert art == [13.0, 13.1, 74.0, 34.9], art   # centred: equal side margins
+    assert art == [6.5, 7.9, 87.0, 40.1], art   # centred: equal side margins
     sc2 = split_cards([big, lg, {**lg, "start": 3.5, "end": 4.7}], art)
     assert [c["box"] for c in sc2] == [art, art] and "lane" not in sc2[1] and sc2[1]["end"] == 6.5, sc2   # overlapping logo dropped
     vs = build(style, words, {**meta, "width": 1080, "height": 1920}, imgs, layout={"mode": "split"})
@@ -3254,7 +3277,7 @@ def demo():
     tv = [{"word": "notion", "nth": 1, "kind": "anim", "type": "flow", "layout": "scene", "props": {"nodes": [{"logo": "notion"}]}},
           {"word": "every", "nth": 1, "kind": "anim", "type": "caption_page", "hold_s": 2, "props": {}}]
     vp = build(style, words, vm, visuals=tv)
-    assert vp["captions"]["style"]["width_pct"] == 74.0, vp["captions"]["style"]   # vertical captions inside the safe zone
+    assert vp["captions"]["style"]["width_pct"] == 86, vp["captions"]["style"]   # vertical captions inside the safe zone
     assert "layout" not in vp and vp["motion"] == "smooth" and vp["look"] == {"preset": "neutral"}, vp   # no panel, no house palette
     cp = next(c for c in vp["cards"] if c["anim"]["type"] == "caption_page")
     assert cp["layout"] == "box" and [w["text"] for w in cp["anim"]["props"]["words"]][:2] == ["every", "video"], cp
@@ -3298,7 +3321,7 @@ def demo():
     assert sl["props"]["enter"]["dir"] == "bottom" and sl["props"]["exit"]["dir"] == "left", sl
     lw2 = [{"text": t, "start": 0.3 * i, "end": 0.3 * i + 0.2} for i, t in enumerate("I think you have a horrible mindset and you need".split())]
     assert letterbox_title(lw2) == "i think you have a horrible mindset", letterbox_title(lw2)
-    assert pw["box"][:3] == [13.0, OVERLAY_TOP, 74.0] and pw["box"][1] + pw["box"][3] <= 34 - HEAD_GAP + 1e-6, pw["box"]
+    assert pw["box"][:3] == [6.5, OVERLAY_TOP, 87.0] and pw["box"][1] + pw["box"][3] <= 34 - HEAD_GAP + 1e-6, pw["box"]
     assert pt["box"] == pw["box"], pt["box"]
     assert pl["box"] == [0, 0, 100, 100] and pl["anim"]["props"]["head"] == [32, 34, 28, 23], pl
     assert pl["anim"]["props"]["band"] == list(LOGO_BAND) and pl["anim"]["props"]["size"] == LOGO_SIZE, pl   # big, centred

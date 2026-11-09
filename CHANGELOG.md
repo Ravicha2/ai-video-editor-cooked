@@ -45,6 +45,122 @@ What changed for every user, newest first.
 - The caption contrast check reads inside a stroked caption's outline instead of the footage beyond it.
 - Fonts load the Thai subset when the family has it, so Thai text is not tofu boxes on the render machine.
 
+## ai-editor 2.7.43, creator-teardown 2.7.43 (2026-11-06)
+- Add audio in the editor. The Sounds panel lists your sounds, the ones you picked for a moment first. Play one to hear it, search, then Add puts it at the playhead or drag it onto the timeline. It goes on the first audio track free there, or a new one.
+- Your own files. + Audio opens a file picker for mp3, wav, m4a, aac, flac, ogg, opus, or a video whose sound you want. Dropping an audio file from Finder on the timeline adds it where you drop it; on the video, at the playhead. A long song stops at the end of the video.
+- Every sound is copied into the edit, so the export has it on any Mac.
+- Audio clips show their waveform. Move, trim either edge, Alt-drag to slip, split and delete them like any clip. Drag a top corner to fade in or out. Volume and fades are in Properties, and each track mutes.
+- What you add is heard at once in the player and in the export.
+
+## ai-editor 2.7.42, creator-teardown 2.7.42 (2026-11-06)
+- Split and delete work everywhere. S or Cmd+B splits the picked clip at the playhead, or with nothing picked the video under it. Delete or Backspace takes out the picked clip, or the one under the mouse once you move onto it, and the gap closes. Split and Delete buttons sit beside the timeline zoom. Each is one undo.
+- Keys no longer stop after you type in Properties. Clicking a clip or the video lets go of the field, so the next pick shows its own settings and S and Delete work.
+- A split keeps the zoom. Both parts hold the picture exactly where it was.
+- Keyframes you can see. A picked clip opens a lane under its track with a row per animated setting and a diamond per keyframe, the AI's zooms included. Click a diamond to go there and see it in Properties, drag it to move it, press Delete to remove it, and pick its ease (linear, ease in, ease out, ease in and out, hold). Properties opens if it was closed. The diamond beside a field adds a keyframe; a keyed field shows in yellow. Scale is now a field.
+- The AI's cuts are easy to find. A yellow tick per cut on the ruler at any zoom, with what was taken out and Bring back on hover. The Video row's list button shows every cut with its time, reason and words. Up and Down jump between cuts.
+- No black strip down the side. Footage the house centre step slid over is zoomed just enough to fill the frame, and scenes already made heal the first time they open. New scenes zoom about each zoom's own point, as the render does.
+
+## ai-editor 2.7.41, creator-teardown 2.7.41 (2026-11-06)
+- The Properties panel closes. Its × hides it and the video gets the room; picking something keeps it closed, so the video never jumps. Properties in the left rail opens it again, and so does any tool there. It remembers which way you left it.
+
+## ai-editor 2.7.40, creator-teardown 2.7.40 (2026-11-05)
+- Scenes. A cooked. edit now opens as a scene: the footage, every text, picture, card, caption and sound is its own item on its own track, drawn the same way on the page and in the export.
+- Every element movable. Press on anything on the video to move it, drag a handle to resize or rotate it, crop a picture or a clip, and trim or slide it on the timeline. Its settings open on the left.
+- AI cuts as clips you can drag back. Each piece the AI kept is a clip of your raw take. A thin yellow line marks each cut: hover it to see what was taken out and why, and press Bring back, or drag a clip's edge out to get the words back. Everything after it moves with it.
+- Export from scenes. Export renders the scene exactly as you see it, with Show in Finder and Download.
+- Trial reels and other versions get the full timeline. Each version is its own scene: move, trim and export it like the main draft, with its own undo. The export carries the version's name.
+- Resize like Canva. The handles sit on the element as you see it, even while the footage is zoomed. A corner keeps the opposite corner still (Alt resizes from the centre) and keeps a picture's, clip's or card's shape (Shift frees it). A text's corner scales its words and box; its side changes the wrap. Edges snap to the centre and other items while you resize.
+- Nothing stops at the reels safe zone any more. Moves and resizes go anywhere on the frame.
+- A click on empty space picks nothing: the black around the video, an empty timeline row, or the footage while something else is picked. Picking no longer highlights a text's words.
+- One editor for every video. Every draft opens in the scene editor by itself, a cooked. edit or a finished MP4 from another skill, and everything in it moves. A finished MP4 is one clip you can move, trim and crop, with the texts, sounds and cuts you already made on it kept as their own items.
+- Claude's work arrives as elements. When you send notes on a draft, Claude answers them on the scene: a screenshot is a picture, an animation is a clip with a see-through background, a text is a text, a sound is a sound. Each one shows up on the page within a few seconds, with no new render, and you can drag, resize, trim or delete it like anything else.
+- See what Claude changed. Its items carry a small Claude mark on the timeline until you touch them. The notes panel lists Claude's changes, each with Undo and Redo, and Cmd+Z takes a whole Claude change off in one step while your own edits since stay.
+- Claude edits trial reels too. A note on a version is answered on that version's own scene, with its own list of Claude's changes and its own undo.
+
+## ai-editor 2.7.39, creator-teardown 2.7.39 (2026-11-05)
+- Export. Edit, then press Export: it renders exactly what the page shows and saves the video, with Show in Finder and Download. No feedback to Claude, no approve, and it works while Claude is busy (it exports what you see now). Exports also go to your library's exports folder, and home shows when a video was exported.
+- Drag on the video like Canva. Press on a text or a picture and drag it straight away; a click picks it, a double-click types. Texts win over the picture under them; Cmd-click reaches the picture. Bigger handles with their own cursors, corners that never hide under another item, and the video no longer jumps while you drag.
+- A text that is already in the video picture shows as "In the video" instead of a second copy you could drag. Sounds already mixed in are not played twice.
+
+## ai-editor 2.7.38, creator-teardown 2.7.38 (2026-11-05)
+- Ripple. A magnet on the Video lane (on by default) takes a cut piece out of the timeline and pulls everything after it left, as the video will play. A join mark sits where pieces meet: double-click it or press Delete on it to bring the piece back. Cuts now come out of cooked.'s own drafts too, by themselves.
+- One undo for everything. Every hand edit undoes and redoes, deleting a picture too, and the button says what it will undo.
+- Editor keys: Space, J/K/L, a frame or a second at a time, jump between edges, copy, paste and duplicate at the playhead, pick the whole lane, Q and W trim to the playhead.
+- Your own shortcuts. Press ? to see every key and change any of them: click a key, press the new one. It warns when a key is taken and offers to swap. CapCut and Premiere Pro / Resolve presets, Reset and Reset all, and the same editor in home Settings. Saved once for every video.
+- Properties. Pick anything and its settings open on the left: text position, rotation, opacity, alignment, animation and text colour; picture position, scale, rotation and opacity; sound volume, fades, trim and mute. Several picked show what they share.
+- Handles on the video. A picked text or picture moves, resizes and rotates right on the video, snapping to the centre, other items and the reels safe zone. Alt-drag copies it, arrows nudge it.
+- Brand kit. A Brand page on home: import your BRAND.md, edit it there, or let Claude make one from your website. Every edit uses your colours, fonts, logo and voice.
+
+## ai-editor 2.7.37, creator-teardown 2.7.37 (2026-11-05)
+- Every draft edits live, not only cooked.'s own plan renders. A finished video from any skill plays in the live player with your texts, sounds and lanes on top, so a change shows at once.
+- Hand edits on those drafts go into the video by themselves: texts, sounds and video cuts render onto the draft in the background, the cut pieces come out, and nothing becomes a note for Claude. The draft Claude made stays as the base, so nothing is drawn twice.
+- A cut piece plays without it straight away, and its toast says so.
+- Teach your styles and skills from any note, any round. "Make this a rule" on a note saves it straight to this video's style, My style, another style or one of your skills (trial reels, talking head and the rest), with Undo.
+- New style from this video sits in the video page's menu at any time, and home's New style can start from a video.
+- After the final approve, the rules card opens over the video. A "Rules to review" button reopens it, and home lists every video with rules waiting.
+- If no Claude is running for the video, cooked. reads your notes itself in the background, so the card never sits on "Claude is reading your notes".
+
+## ai-editor 2.7.36, creator-teardown 2.7.36 (2026-11-03)
+- The timeline has lanes. Images, Text and Sounds each get a lane per overlap, so nothing sits on top of anything else. Drag an item up or down to move it to another lane, or below the last one to make a new lane. A later lane draws on top in the video.
+- Each lane has hide (mute for sounds) and lock. A hidden lane leaves the video and comes back when you show it. A locked lane cannot be picked or moved.
+- Moves and trims snap to the playhead, to every other item's edges and to caption words, with a yellow line and the time. Hold Cmd to drag freely.
+- Shift-click picks several texts, images or sounds. Drag one to move them all, or press Delete to remove them all. Each is one undo.
+- The Support cooked. link lets you choose how much to give.
+
+## ai-editor 2.7.35, creator-teardown 2.7.35 (2026-11-03)
+- Support cooked. cooked. stays free, and a Stripe link (pay what you want) now sits in the sidebar and in Settings. After you have finished 2 videos, one popup asks once: Not now asks again in 30 days, Don't ask again never does. The repo has a Sponsor button too.
+
+## ai-editor 2.7.34, creator-teardown 2.7.34 (2026-11-03)
+- Songs on the timeline edit like CapCut. Drag either edge to trim (the handles show on hover), drag the middle to move, and Alt-drag to slide which part of the song plays. Press Cmd+B or Split in its box to split it at the playhead, then Delete cuts a piece away. Every step undoes, volume too, and it goes into the video by itself.
+- A song baked into the draft keeps its name and its handles.
+- Text on the video clicks and drags again in live mode: its click target had been hidden, so a click picked the picture under it. A text with the cursor in it drags when you press and move, and a plain click still places the cursor. A picked text sits over pictures.
+
+## ai-editor 2.7.33, creator-teardown 2.7.33 (2026-11-02)
+- Hand edits just update. Caption style, caption words and timing, and sounds on the timeline go into the video by themselves, with no note in the chat. A note is only written when the draft cannot be updated by itself, such as while Claude has it or when its render is gone.
+- A caption style reaches every frame, so it takes a full render in the background. The live player shows it at once, and Approve waits until the video has it.
+- Cmd+Z and Shift+Cmd+Z work on caption size, place, colour, look and words, on text (moved, resized, restyled, added, deleted) and on sounds added or removed. They work right after using a slider too. Undo and redo buttons sit in the control row.
+- A text saves itself when you let go or stop typing. A click anywhere else lets it go without losing the change.
+
+## ai-editor 2.7.32, creator-teardown 2.7.32 (2026-11-02)
+- The back button and the logo always take you home from a video page. If the editor's window stopped, for example when the Mac restarted, they start it first.
+
+## ai-editor 2.7.31, creator-teardown 2.7.31 (2026-10-30)
+- The chat icon sits at the far right of the top bar and stays there: it opens and closes the panel.
+- The timeline stays on an approved draft and on trial reels, to look and scrub. A trial reel shows its ruler, playhead and video bar.
+- The version list is the app's own menu, with bigger rows that are easier to click.
+- A trial reel no longer jumps at the main draft's cuts, and its transcript no longer offers to cut words.
+
+## ai-editor 2.7.30, creator-teardown 2.7.30 (2026-10-30)
+- The playhead drags again on the edit page: from its handle, the ruler or any empty part of a row. The video follows.
+- A zoomed-in timeline scrolls and follows the playhead again.
+- The Captions row shows the words at any zoom, and the Video row no longer repeats them.
+- An AI chat icon in the top bar opens the panel when it is closed.
+
+## ai-editor 2.7.29, creator-teardown 2.7.29 (2026-10-30)
+- New versions install themselves while the window or a video page is open and nothing is being made. Open pages refresh on their own and say what's new. Turn it off in Settings, under Updates.
+- On a trial reel (picked in the Version menu), the notes box works after the video is approved: "Note on t2 at this moment..." goes to that trial, and Claude answers on the Trial reels tab.
+- A new version shows Update on the edit page too, and a page never refreshes itself while you type on the video.
+- The edit page is tidied the way CapCut lays it out. The rail shows only the edit tools, with Transcript first (the logo goes home). The transcript is a panel on the left and the video sits big in the middle. One row holds play, time, speed, Watch/Compare, sound, safe zone, full screen and zoom. One timeline: the extra scrubber and its bar row are gone, and each row is named Video, Images, Text, Captions or Sounds with its one action as a small icon. Captions are calm grey until you pick one. The "This is the edit" line is gone. After you approve, the top button says Approved instead of offering Approve beside Undo approve.
+- Claude's timeline notes keep one line per thing: moving a sound again replaces its line, and a sound added then removed leaves nothing, so the note no longer grows with every change.
+- The notes panel closes: × beside its tabs hides it and the video gets the room, Notes in the top bar brings it back, and the page remembers. Writing a note opens it again.
+- Timeline keys, CapCut's: click any clip (text, caption, image, sound, video piece) to pick it, then Delete or Backspace takes it out. Cmd+B or S splits at the playhead, Cmd+D copies the picked text right after it, Alt+Left and Alt+Right nudge the picked clip 0.1 s (1 s with Shift), Esc lets go. Keys always go to what you clicked last, so words picked in the transcript earlier never take a Delete meant for a clip. Point at a clip without clicking and Delete takes that one out instead.
+- The editor learns from what you do, not only what you type: at the approve, your moves, resizes, fonts, caption changes, cuts and sound levels become proposed rules, and a kept one with a setting changes the next draft. Each draft lists the rules it used, and Turn off stops one without deleting it.
+- The edit plays live on its review page: the video you watch is the edit itself, drawn from its plan, so typing a caption or a text, a colour, a moved or dropped picture, a sound or a cut shows in the real frame at once. No blurred box, no Preview label, no second copy. The MP4 still plays for the cut, older drafts, other versions, compare and a render finished by hand.
+- Drag a caption's edges on the Captions row to show it longer or shorter, or drag it to move it; an edge pushes the next caption along. The video shows it at its new time straight away and it bakes into the video by itself.
+- A picked image lets go when the video plays past it or you click anywhere else, and an open text saves and closes the same way. No Done needed.
+- A Media tool on the edit: upload or drop images and videos, then drag one onto the video (or the timeline) and it is on screen there at once, from the playhead, 3 s for a picture or the clip's length up to 10 s. Move, resize, retime and delete it like any card; it goes into the video by itself, no Claude needed.
+- On the edit, select words in the transcript and press Delete to cut them: they strike through, the Video row and playback skip them at once, and Claude gets the words in one note. Delete on struck words puts them back, Cmd+Z undoes. The transcript also folds to its header with the arrow in its corner, kept in this browser.
+- Click a caption and the Captions panel opens on that line: its words, then Look, Size, Position, Colour, Highlight and Words at a time. Each change shows on the video at once as a preview, and you can drag the caption up or down. Saved for this video only; the next draft has it.
+- Timeline, CapCut style: drag a split line to move it (a cut gets longer or shorter with it, snapping to word starts), double-click one to remove it, and a new Images row shows every picture on screen: click it to select it on the video, drag it or its edges to change when it shows, and it goes into the video by itself. Cmd+Z and Shift+Cmd+Z undo and redo timeline edits.
+- Text is edited on the video, like CapCut: click a text to type straight into it, drag it to move it, drag any corner to size it, and drag a side to bring its width in (it wraps sooner). Enter saves, Esc cancels. The panel shows the same text, size and width.
+- Text takes a font (10 Google fonts, TikTok Sans by default) and a colour: 24 colours, a colour wheel for any colour, or a hex code. On a box the colour is the box, and its words turn black or white to read.
+- Block: a new look with one box that hugs the whole text. Box keeps a box on each line.
+- Texts already in the video can be clicked on the video to change them. Font, colour, width and Block stay when Claude plans the video again.
+- Drag a text on the timeline's Text row to move it in time, or drag either edge to make it start or end somewhere else.
+- A Video row on the timeline: Split (or S) splits the video at the playhead, click a piece and press Delete to cut it, Delete again puts it back. The page plays without the cut pieces straight away; Submit feedback and Claude cuts those words from the next draft.
+- Drop an audio file (a song, a voice-over, a sound; up to 200 MB) on the timeline, or Choose an audio file under + Sound. It plays with the video at once. Drag it along the Sounds row, drag its edges to trim it, click it for its volume, Play and Remove, or press Delete. Sounds from your library drag along the row too.
+- Drop a video or an image on the timeline (at that spot) or on the video (at the playhead). It goes in Anything to add? with the words said there, and Claude puts it on screen on them.
+
 ## ai-editor 2.7.28, creator-teardown 2.7.28 (2026-10-24)
 - One Claude control on the video page: a dot and what Claude is doing (working on your notes, waiting for your notes, open, or not running), with one button. Show Claude brings its Terminal window to the front; Start Claude carries on in the Claude that worked on the video. Copy for Claude, Copy session and Open a new Claude are gone.
 - A Claude page in the editor window lists every video's Claude with Show, Stop and Start, and the sidebar says how many are running. Stop closes that Claude; the video, notes and drafts stay.

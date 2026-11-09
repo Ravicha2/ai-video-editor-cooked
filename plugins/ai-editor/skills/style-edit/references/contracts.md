@@ -10,6 +10,10 @@ style-edit        <-  style.json + cut.mp4 + words.json (+ optional images)
                   ->  edits/<name>/plan.json -> stills/ -> render.mp4
 ```
 
+**Write elements, not pixels.** What a skill puts on screen reaches the review page as items in
+`edits/<name>/scene.json` (`lib/ai_editor/SCENE.md`, `scene.py from-plan` or the `Scene` helper), never burned into an
+MP4: the user moves every one, and Claude's later fixes are scene ops. The render is the export.
+
 All paths are relative to the library (`library.py path`), or a project folder the user named.
 
 ## Tool home
@@ -141,7 +145,9 @@ Only answered keys are stored; `profile.py missing` lists the rest and `load()` 
 ```
 
 - `platform`: `tiktok` | `reels` | `shorts` | `youtube`; `aspect` follows it (`9:16`, or `16:9` for youtube).
-- `brand`: `{"use_creator": true}` or colours, font and logo. `captions.style`: `creator` | `plain` | `bold` | `karaoke` | `minimal`.
+- `brand`: `{"use_creator": true}` or colours, font and logo. A kit from the home page's Brand page (lib/ai_editor/brandkit.py)
+  adds `roles` (ground, ink, accent), `font_body`, `voice`, `use`, `avoid`, `do`, `dont`, `captions`, `sounds`, `notes` and
+  `kit`, the path of `$AI_EDITOR_HOME/brand/BRAND.md` (the source of truth, any skill may read it); `use_creator: true` is its switch off. `captions.style`: `creator` | `plain` | `bold` | `karaoke` | `minimal`.
 - `goal` and `names` belong to one video and are re-confirmed on later videos.
 - Look order in plan.py: the profile's brand kit, then the creators' measured style.json, then the `editorial` preset.
 
@@ -348,6 +354,16 @@ is relative to the edit folder: `edits/<name>/.sfx/`, written by `sfx.py build` 
 volume 1; its level is baked into the file. Empty when style.json has `"sfx": false` or `plan.py --no-sfx`.
 
 Times in seconds on cut.mp4's timeline. `box` is `[x, y, w, h]` in percent of the frame. Caption `size_pct` is measured on the frame's long side, so it reads the same in 9:16 and 16:9.
+
+## scene.json (every skill -> the review page and the export)
+
+Every element on screen is an item of `<edit>/scene.json` (`lib/ai_editor/SCENE.md`), drawn by the `Scene`
+composition (`remotion/src/SceneEdit.tsx`) live on the review page and for the export, so the user moves, crops,
+trims and exports it without Claude. Skills write scenes with `lib/ai_editor/scene.py`: `Scene(w, h, fps)` then
+`.video(src, start, end, ...)`, `.image`, `.text`, `.shape`, `.audio`, `.captions`, `.save(edit)`; never burn a
+title, frame, mask or shadow into an MP4. A clip with its own animation (a HyperFrames clip, a Blender shot) is one
+video item. A plan draft becomes a scene with `scene.py from-plan <edit>` (the cut's kept pieces of the raw take as
+clips), any other draft with `scene.py from-video <edit>`; `scene.py render <edit>` is the export.
 
 ## github-render (edit.py render --github -> GitHub Actions)
 

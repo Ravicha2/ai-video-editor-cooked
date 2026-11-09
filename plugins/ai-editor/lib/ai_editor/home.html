@@ -273,7 +273,7 @@ body.dz #dropov{display:none!important}
 .pchip button{width:22px;height:22px;border:0;background:none;color:var(--t3);display:grid;place-items:center;flex-shrink:0;cursor:pointer}.pchip button:hover{color:var(--ink)}
 .cpick{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;min-width:0}
 .cpick .bseg{overflow-x:auto}.cpick .bseg button{flex:1 0 auto;padding:0 12px;white-space:nowrap}
-.cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(104px,100%),1fr));gap:8px;max-height:320px;overflow:auto}
+.cpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(104px,100%),1fr));gap:8px;max-height:320px;overflow:auto}   /* the clip picker; not .cgrid, the Styles rows */
 .ctile{position:relative;min-width:0;padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel);text-align:left;color:var(--ink);cursor:pointer}
 .ctile.on{border:1.5px solid var(--ink)}
 .ctile .cp{display:block;position:relative;aspect-ratio:16/9;background:#222 center/cover}
@@ -1019,6 +1019,21 @@ body:has(.smprow) .sb-smp{display:none}   /* the page offers the sample itself: 
 .sb-new:disabled{opacity:.35;cursor:default}
 @media (max-width:1180px){.obk{flex-direction:column;align-items:stretch}.obk>*{flex:0 0 auto!important}.obwd{grid-template-columns:1fr 1fr}.obhome{grid-template-columns:1fr}}
 
+/* Brand page: the kit read from BRAND.md */
+.bk-sw{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:16px}
+.bk-c{display:flex;flex-direction:column;gap:8px;min-width:0}.bk-c i{display:block;height:72px;border-radius:12px;border:1px solid var(--line)}
+.bk-c b{font-size:13px;line-height:16px;font-weight:600;font-family:var(--mono)}
+.bk-f{display:flex;align-items:baseline;justify-content:space-between;gap:24px;padding:4px 0;min-width:0}.bk-f span{font-size:32px;line-height:40px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bk-logo{display:flex;align-items:center;justify-content:center;width:220px;height:120px;border-radius:12px;background:var(--tile);border:1px solid var(--line);padding:16px}.bk-logo img{max-width:100%;max-height:100%}
+.bk-l{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;font-size:14px;line-height:20px;color:var(--t2)}
+.bk-p{margin:0;font-size:14px;line-height:22px;color:var(--t2);white-space:pre-wrap}
+.bk-ed{width:100%;min-height:440px;padding:14px 16px;border:1px solid var(--ring);border-radius:12px;background:var(--inbg);color:var(--ink);font:13px/20px var(--mono);resize:vertical;outline:0}
+.bk-in{width:100%;padding:10px 12px;border:1px solid var(--ring);border-radius:10px;background:var(--inbg);color:var(--ink);font:14px/20px system-ui,sans-serif;outline:0;resize:vertical}
+.bk-drop{min-height:180px;flex:none}
+/* Settings, Keyboard shortcuts: the review page's shortcut editor (shortcuts.js) in a dialog */
+#kmdlg{width:min(600px,calc(100vw - 32px));max-height:calc(100vh - 64px);padding:20px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);box-shadow:0 8px 30px rgba(0,0,0,.25)}
+#kmdlg::backdrop{background:rgba(0,0,0,.4)}
+#kmdlg .kmh{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}#kmdlg .kmh b{font-size:17px;line-height:22px;font-weight:600}
 </style>
 </head>
 <body>
@@ -1185,7 +1200,7 @@ function toEditor(r){const e=(r.edits||[])[0];if(e){location.href='/review?dir='
 // ---------------------------------------------------------------- returning user (Paper "J launcher + pick")
 // New video (pick clips) -> Pick a style -> Making your video; Home (welcome back), Your videos, My style, Settings.
 // the view lives in the address (#videos, #style/@sample-50-50), so a reload stays on it; the review page's rail opens one
-const HASHV=['home','videos','mystyle','skills','claude','settings','new'];
+const HASHV=['home','videos','mystyle','skills','claude','settings','new','brand'];
 let L=null, R=null, rv=null;
 {const h=decodeURIComponent(location.hash.slice(1));if(h.startsWith('style/')){rv='stylepage';ui.sp=h.slice(6)}else if(HASHV.includes(h))rv=h}
 function setHash(){const h=rv==='stylepage'&&ui.sp?'#style/'+encodeURIComponent(ui.sp):HASHV.includes(rv)&&rv!=='home'?'#'+rv:'';if(location.hash!==h)history.replaceState(null,'',location.pathname+location.search+h)}
@@ -1202,7 +1217,7 @@ const clipOf=p=>nv.clips[p]||(R&&R.videos.find(v=>v.path===p))||{path:p,name:p.s
 const aspectOf=()=>{if(nv.aspectSet||!nv.sel.length)return nv.aspect;const c=clipOf(nv.sel[0]);return c.vertical===false?'16:9':c.vertical?'9:16':nv.aspect};
 const total=()=>nv.sel.reduce((a,p)=>a+(clipOf(p).duration||0),0);
 const styleName=id=>((L&&L.styles||[]).find(c=>c.id===id)||{}).name||(id==='mine'?'My style':id==='defaults'?'the default style':/^@links-/.test(id)?'New format':id);
-function rgo(v){rv=v;setHash();ui.forceR=true;ui.cmenu=null;if(v==='new'||v==='home')loadRecent();if(v==='new')loadBroll();if(v==='skills')loadSkills();if(v==='claude')loadClaudes(true);render();window.scrollTo(0,0)}
+function rgo(v){rv=v;setHash();ui.forceR=true;ui.cmenu=null;if(v==='new'||v==='home')loadRecent();if(v==='new')loadBroll();if(v==='skills')loadSkills();if(v==='claude')loadClaudes(true);if(v==='brand')loadBrand();render();window.scrollTo(0,0)}
 const SMP=/^@sample-/;   // a sample keeps its id after the user changes it, so it stays a sample on every page
 let PH=null;   // each video's phase at the last read: a video that leaves Claude's work chimes once (none on the first read)
 function watchDone(){const A=window.aveAlert;if(!A)return;const now=Object.fromEntries(L.videos.map(v=>[v.dir,vPh(v)]));if(!PH){PH=now;return}
@@ -1411,7 +1426,7 @@ function pickerSec(){
   return `<div class="cpick"><div class="between"><b style="font-size:14px">Pick clips</b><button class="btn quiet sm" style="height:30px;padding:0 12px;font-size:13px" onclick="nv.bpick=null;render()">Done</button></div>
     ${libs.length>1?`<div class="bseg" role="tablist">${libs.map(l=>`<button role="tab" aria-selected="${l.name===n}" class="${l.name===n?'on':''}" onclick="loadPick(${J(l.name)})">${esc(l.name)}</button>`).join('')}</div>`:''}
     <label class="bsrch">${SRCH}<input id="bcq" placeholder="Search clips" value="${esc(nv.bq)}" oninput="nv.bq=this.value;render()" aria-label="Search clips"></label>
-    ${!cs?'<div class="muted">Loading...</div>':shown.length?`<div class="cgrid">${shown.map(tile).join('')}</div>`:`<div class="muted">${q?'No clip has that name.':'No clips in this folder.'}</div>`}
+    ${!cs?'<div class="muted">Loading...</div>':shown.length?`<div class="cpick">${shown.map(tile).join('')}</div>`:`<div class="muted">${q?'No clip has that name.':'No clips in this folder.'}</div>`}
     <div class="muted" style="font-size:13px">Ticked clips go in for sure. Claude still picks the rest from the folders above.</div></div>`;
 }
 function clipsBlk(){
@@ -1731,6 +1746,62 @@ function vClaude(){
     ${CL==null?'<p class="muted">Loading...</p>':CL.length?`<div class="cll">${CL.map(row).join('')}</div>`:'<p class="muted">No video has had a Claude yet. One starts with each new video.</p>'}
     ${CL&&CL.length?'<p class="clh">Stopping closes that Claude. Your video, notes and drafts stay. Start carries on from them.</p>':''}</div>`;
 }
+
+// ---- Brand: the user's brand kit, one BRAND.md (brandkit.py through /brand*): what was read, Import, Edit, the switch,
+// and Make one with Claude (a headless Claude Code job that writes a draft to review)
+let BK=null;const bk={};
+async function loadBrand(){try{const r=await fetch('/brand');if(r.ok){BK=await r.json();brandFonts();if(BK.job&&BK.job.state==='running'){clearTimeout(bk.t);bk.t=setTimeout(()=>{if(rv==='brand')loadBrand()},3000)}if(BK.draft&&!bk.edit){bk.edit=true;bk.text=BK.draft;bk.claude=false}render()}}catch(e){}}
+const FONTS={};
+function brandFonts(){for(const n of Object.values((BK&&BK.kit&&BK.kit.fonts)||{})){if(FONTS[n])continue;FONTS[n]='loading';
+  const l=document.createElement('link');l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family='+encodeURIComponent(n).replace(/%20/g,'+')+':wght@400;600&display=swap';
+  l.onload=()=>{FONTS[n]='google';render()};l.onerror=()=>{FONTS[n]='system';render()};document.head.append(l)}}
+async function bkSave(md){if(!md||!md.trim()){toast('The file is empty.');return}const r=await post('/brand/save',{md});if(!r._ok){toast(r.error||'That did not save.');return}
+  BK=r;bk.edit=false;bk.paste=false;brandFonts();const k=r.kit||{},n=(k.colors||[]).length,f=Object.keys(k.fonts||{}).length;
+  toast(`Saved. Found ${n} colour${n===1?'':'s'}, ${f} font${f===1?'':'s'}${k.logo?' and a logo':''}.`);render()}
+function bkFile(f){if(!f)return;if(!/\.(md|markdown|txt)$/i.test(f.name)){toast('Pick a .md file.');return}const r=new FileReader();r.onload=()=>bkSave(String(r.result));r.readAsText(f)}
+function bkDrop(e){e.preventDefault();e.stopPropagation();if(typeof dragOff==='function')dragOff();bkFile(e.dataTransfer.files[0])}
+async function bkUse(on){const r=await post('/brand/use',{on});if(!r._ok){toast(r.error||'That did not save.');return}BK=r;render()}
+function bkEdit(){bk.edit=true;bk.claude=false;bk.text=BK&&BK.md||'';render();setTimeout(()=>{const e=$('#bk-ed');if(e)e.focus()},0)}
+async function bkPics(fs){bk.pics=[];for(const f of [...fs].slice(0,6)){const d=await new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result);r.readAsDataURL(f)});bk.pics.push({name:f.name,data:d})}render()}
+async function bkClaude(){const url=($('#bk-url')||{}).value||'',about=($('#bk-about')||{}).value||'';bk.url=url;bk.about=about;
+  const r=await post('/brand/claude',{url,about,images:bk.pics||[]});if(!r._ok){toast(r.error||'That did not start.');return}BK=r;bk.claude=false;bk.pics=[];loadBrand()}
+async function bkClear(){const r=await post('/brand/claude',{clear:true});if(r._ok)BK=r;bk.edit=false;render()}
+function vBrand(){
+  if(BK==null){loadBrand();return '<div class="pgc"><div class="ph"><h1>Brand</h1></div><p class="none">Loading...</p></div>'}
+  const k=BK.kit,j=BK.job,run=j&&j.state==='running';
+  const acts=`<div class="row hact">${k?`<button class="b2" onclick="bkEdit()">${ic('pencil',16)}Edit</button>`:''}<button class="b2" ${run?'disabled':''} onclick="bk.claude=!bk.claude;bk.edit=false;render()">Make one with Claude</button><button class="b1" onclick="$('#bk-pick').click()">${ic('up',16,2.2)}Import a file</button></div>`;
+  const head=`<div class="row" style="justify-content:space-between;align-items:flex-start;gap:16px"><div class="ph"><h1>Brand</h1><p>Your colours, fonts, logo and voice. Claude uses them on every video.</p></div>${acts}</div>
+    <input type="file" id="bk-pick" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden onchange="bkFile(this.files[0]);this.value=''">`;
+  const sec=(t,body,aside='')=>`<div class="ssec"><div class="shd"><b>${t}</b>${aside?`<span class="t2">${aside}</span>`:''}</div>${body}</div>`;
+  const list=xs=>`<ul class="bk-l">${xs.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`;
+  const ROLE={ground:'Background',ink:'Text',accent:'Accent',primary:'Primary'};
+  let job='';
+  if(run)job=`<div class="ssec"><div class="msg">${SPIN}<span>Claude is making your brand kit${j.url?' from '+esc(j.url):''}. This takes a minute or two.</span></div></div>`;
+  else if(j&&j.state==='failed')job=`<div class="ssec"><div class="msg bad">${CROSS}<span>${esc(j.why||'That stopped.')}</span></div><div class="row" style="gap:8px"><button class="b2 s" onclick="bk.claude=true;render()">Try again</button><button class="b2 s" onclick="bkClear()">Dismiss</button></div></div>`;
+  const form=bk.claude&&!run?sec('Make one with Claude',`<div class="t2" style="white-space:normal">Give a website, a few lines about the brand or some pictures. Claude reads them and writes a BRAND.md for you to check.${BK.claude?'':' Claude Code is not installed on this computer, so this will not run.'}</div>
+      <input id="bk-url" class="bk-in" placeholder="Website, like example.com" value="${esc(bk.url||'')}" aria-label="Website">
+      <textarea id="bk-about" class="bk-in" rows="3" placeholder="A few lines about the brand" aria-label="About the brand">${esc(bk.about||'')}</textarea>
+      <div class="row" style="gap:12px"><button class="b2 s" onclick="$('#bk-img').click()">${ic('image',16)}Add pictures</button><span class="t2">${(bk.pics||[]).length?esc(bk.pics.map(x=>x.name).join(', ')):'Logos, screenshots or posts'}</span>
+        <input type="file" id="bk-img" accept="image/*" multiple hidden onchange="bkPics(this.files)"></div>
+      <div class="row" style="gap:8px"><button class="b1" onclick="bkClaude()">Start</button><button class="b2" onclick="bk.claude=false;render()">Cancel</button></div>`):'';
+  const ed=bk.edit?sec(BK.draft?'Claude\'s draft':'Edit BRAND.md',`${BK.draft?'<div class="t2" style="white-space:normal">Check what Claude found, change anything, then Save.</div>':''}
+      <textarea id="bk-ed" class="bk-ed" spellcheck="false" aria-label="BRAND.md" oninput="bk.text=this.value">${esc(bk.text||'')}</textarea>
+      <div class="row" style="gap:8px"><button class="b1" onclick="bkSave(bk.text)">Save</button><button class="b2" onclick="${BK.draft?'bkClear()':'bk.edit=false;render()'}">${BK.draft?'Discard':'Cancel'}</button></div>`,BK.draft?'':esc(BK.path)):'';
+  if(!k)return `<div class="pgc">${head}${job}${form}${ed}${bk.edit||bk.claude?'':`<div class="ssec"><button class="drop bk-drop" ondragover="event.preventDefault();event.stopPropagation()" ondrop="bkDrop(event)" onclick="$('#bk-pick').click()">${UP}<b>Drop your BRAND.md here</b><span class="t2">or click to pick a file</span></button>
+      <div class="row" style="gap:16px;flex-wrap:wrap"><a href="/brand/template" download="BRAND.md">Download the template</a><a href="#" onclick="bk.edit=true;bk.text='';render();return false">Paste markdown</a></div></div>`}</div>`;
+  const cols=k.colors.length?`<div class="bk-sw">${k.colors.map(c=>`<div class="bk-c"><i style="background:${esc(c.hex)}"></i><b>${esc(c.hex)}</b><span class="t2">${esc([c.name,ROLE[c.role]].filter(Boolean).join(' · ')||'No name')}</span></div>`).join('')}</div>`:'<p class="none">No colours found.</p>';
+  const FR={display:'Display',body:'Body',mono:'Code'},fs=Object.entries(k.fonts||{});
+  const fonts=fs.length?fs.map(([r,n])=>`<div class="bk-f"><span style="font-family:'${esc(n).replace(/'/g,'')}',system-ui;font-weight:${r==='display'?600:400}">${esc(n)}</span><span class="t2" style="font-size:13px;line-height:16px">${FR[r]||r} · ${FONTS[n]==='google'?'Google Fonts':FONTS[n]==='system'?'Not on Google Fonts: shown as installed here':'Loading'}</span></div>`).join(''):'<p class="none">No fonts found.</p>';
+  const lg=k.logo?(/^(https?:)?\/\//.test(k.logo)?`<p class="bk-p">${esc(k.logo)}</p>`:`<div class="bk-logo"><img alt="Your logo" src="/brand/file?n=${encodeURIComponent(k.logo.split(/[\\/]/).pop())}&u=${Math.round(k.saved||0)}"></div>`):'<p class="none">No logo found.</p>';
+  const two=(a,b,ta,tb)=>a.length||b.length?`<div class="ssec two"><div><div class="shd"><b>${ta}</b></div>${a.length?list(a):'<p class="none">None</p>'}</div><div><div class="shd"><b>${tb}</b></div>${b.length?list(b):'<p class="none">None</p>'}</div></div>`:'';
+  const use=`<div class="ssec"><div class="lrow2" style="border-top:0;padding:0"><div><b style="font-weight:600">Use for every video</b><div class="t2" style="white-space:normal">${BK.use?'The look comes from your kit.':'Off: the look comes from the style you pick.'}</div></div><button class="sw ${BK.use?'on':''}" role="switch" aria-checked="${BK.use}" aria-label="Use for every video" onclick="bkUse(${!BK.use})"><i></i></button></div></div>`;
+  const un=(k.unread||[]).length?sec('What it could not read',list(k.unread)):'';
+  return `<div class="pgc">${head}${job}${form}${ed}${use}${un}
+    ${sec('Colours',cols,k.colors.length+' found')}${sec('Fonts',fonts)}${sec('Logo',lg)}
+    ${k.voice?sec('Voice',`<p class="bk-p">${esc(k.voice)}</p>`):''}${two(k.use||[],k.avoid||[],'Words to use','Words to avoid')}${two(k.do||[],k.dont||[],'Do','Don\'t')}
+    ${k.captions?sec('Captions',`<p class="bk-p">${esc(k.captions)}</p>`):''}${k.sounds?sec('Sounds',`<p class="bk-p">${esc(k.sounds)}</p>`):''}
+    <div class="ssec"><div class="row" style="gap:16px;flex-wrap:wrap"><span class="t2">${esc(BK.path)}</span><a href="/brand/template" download="BRAND.md">Download the template</a></div></div></div>`;
+}
 function vSkills(){
   if(ui.skills==null&&!ui.skLoading){ui.skLoading=1;loadSkills().finally(()=>ui.skLoading=0)}   // opened from a link (#skills), not the sidebar
   const cards=L?[...(L.styles||[]),...(L.archived_styles||[])]:[],used=n=>cards.filter(c=>c.kind==='skill'&&c.skill===n);
@@ -1795,6 +1866,7 @@ function createModal(){
   if(st.pick)return pickModal();
   if(st.skills)return skillModal();
   if(st.combine)return combineModal();
+  if(st.fromvid)return fromVidModal();
   return `<div class="modalbg" onclick="if(event.target===this)closeCreate()"><div class="modal nsm" role="dialog" aria-modal="true" aria-labelledby="mtitle">
     <div class="row" style="justify-content:space-between"><b class="mt2" id="mtitle">New style</b><button class="mx2" aria-label="Close" title="Close" onclick="closeCreate()">${ic('x',18,2)}</button></div>
     <div class="nbox" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="event.preventDefault();event.stopPropagation();this.classList.remove('over');addRefs(event.dataTransfer.files)"><div class="row" style="justify-content:space-between;align-items:baseline"><b>Analyse a format</b></div>
@@ -1807,6 +1879,7 @@ function createModal(){
         <button class="b1" ${rows.length&&!st.busy?'':'disabled'} onclick="studyLink()">${st.busy?'Starting...':'Analyse this format'}</button></div></div>
     <button class="nbox brow" onclick="buildYourself()"><div><b>Build it yourself</b><p>Pick captions, zooms, cut and sound yourself.</p></div>${ic('chev',18,2)}</button>
     <button class="nbox brow" onclick="ui.study={combine:{sel:[],text:''}};render()"><div><b>Combine styles</b><p>Pick two or more of your styles and say what to take from each.</p></div>${ic('chev',18,2)}</button>
+    <button class="nbox brow" onclick="ui.study={fromvid:{sel:null,name:''}};render()"><div><b>From a video</b><p>Start from the style one of your videos was edited in.</p></div>${ic('chev',18,2)}</button>
     <button class="nbox brow" onclick="openSkills()"><div><b>Use your own skill</b><p>A Claude Code skill that edits videos makes the edit.</p></div>${ic('chev',18,2)}</button></div></div>`;
 }
 // Analyse a format: what the user likes (Claude looks closer at those) and their own files (videos, pictures, PDFs, notes),
@@ -1862,6 +1935,21 @@ function skillModal(){
     <div style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow:auto">${body}</div>
     ${k.sel&&k.for?`<button class="b1" style="align-self:flex-end" onclick="swapSkill()">Use /${esc(k.sel)}</button>`:k.sel?`<div class="fld"><div class="in2"><input id="sk-name" value="${esc(k.name||'')}" placeholder="Name your style" aria-label="Style name" oninput="ui.study.skills.name=this.value" onkeydown="if(event.key==='Enter')createSkillStyle()"></div><button class="b1" onclick="createSkillStyle()">Create</button></div>`:''}
     ${k.msg?`<div class="msg bad">${CROSS}<span>${esc(k.msg)}</span></div>`:''}</div></div>`;
+}
+// New style, From a video: the recent videos with an editor page; the new style copies the one that video used
+function fromVidModal(){
+  const k=ui.study.fromvid,vs=(L.videos||[]).filter(v=>v.review&&!v.sample).slice(0,8);
+  const body=vs.length?vs.map(v=>`<button class="brow2${k.sel===v.dir?' on':''}" onclick="ui.study.fromvid.sel=${J(v.dir)};render()"><span class="grow">${esc(v.name)}</span></button>`).join(''):'<div class="t2" style="white-space:normal;padding:12px">No videos yet. Make one first.</div>';
+  return `<div class="modalbg" onclick="if(event.target===this)closeCreate()"><div class="modal nsm" role="dialog" aria-modal="true" aria-labelledby="mtitle">
+    <div class="row" style="justify-content:space-between"><button class="back" style="text-decoration:none" onclick="ui.study={};render()">${ic('back',14,2)}<b class="mt2" id="mtitle">From a video</b></button><button class="mx2" aria-label="Close" title="Close" onclick="closeCreate()">${ic('x',18,2)}</button></div>
+    <div style="border:1px solid var(--line);border-radius:12px;overflow:auto;max-height:50vh">${body}</div>
+    ${k.sel?`<div class="fld"><div class="in2"><input id="fv-name" value="${esc(k.name||'')}" placeholder="Name your style" aria-label="Style name" oninput="ui.study.fromvid.name=this.value" onkeydown="if(event.key==='Enter')createFromVid()"></div><button class="b1" onclick="createFromVid()">Create</button></div>`:''}
+    ${k.msg?`<div class="msg bad">${CROSS}<span>${esc(k.msg)}</span></div>`:''}</div></div>`;
+}
+async function createFromVid(){
+  const k=ui.study.fromvid,r=await post('/style/from-video',{dir:k.sel,name:k.name});
+  if(!r._ok){k.msg=r.error||'That did not work.';return render()}
+  ui.create=false;ui.study=null;await loadLib();openStyle(r.id);
 }
 // the name the field offers: "<skill> style", never the skill's own name (that one is taken by the skill)
 const skStyleName=n=>n.replace(/[-_:]+/g,' ').replace(/^./,c=>c.toUpperCase()).slice(0,34).trim()+' style';
@@ -2106,7 +2194,7 @@ function vStat(v){
   return {txt:DOING[ph]||'Being made',frac:null,btn:see};
 }
 function vCard(v){
-  const s=vStat(v),fn=rv==='videos'&&ui.fold.videos?'':(fd('videos').folders.find(f=>f.id===inFold('videos',v.dir))||{}).name,meta=[fn,v.stage==='edit'?'Full edit':'Cut',v.wide?'16:9':v.round?(v.draft||`draft ${v.round}`):'',ago(v.updated)].filter(Boolean).join(' · ');
+  const s=vStat(v),fn=rv==='videos'&&ui.fold.videos?'':(fd('videos').folders.find(f=>f.id===inFold('videos',v.dir))||{}).name,meta=[fn,v.stage==='edit'?'Full edit':'Cut',v.wide?'16:9':v.round?(v.draft||`draft ${v.round}`):'',v.exported?exAgo(v.exported):ago(v.updated)].filter(Boolean).join(' · ');
   return `<div class="vc" ${goAttrs(v)} ${dragAttrs('videos',v.dir,v.name,v.thumb)}><div class="vi">${picArea(v)}
     <div class="tx"><div style="min-width:0">${vName(v)}<div class="mt">${meta}</div></div><div class="st"><div class="stt ${s.ok?'ok':''}" title="${esc(s.title||'')}">${s.txt}</div>${s.btn}</div></div>
     <div class="bar ${s.ok?'ok':s.frac==null?'indet':''}">${s.ok?'':`<i style="width:${s.frac==null?40:Math.round(s.frac*100)}%"></i>`}</div></div></div>`;
@@ -2117,8 +2205,9 @@ const picArea=v=>`<div class="pa ${v.wide?'':'tall'}" style="${v.thumb?`--u:url(
 const perRow=()=>Math.max(1,Math.floor((cw()+12)/272));
 function cardRows(vs){return `<div class="vcs">${vs.map(vCard).join('')}</div>`}
 // a finished video as a tile: the card's picture area, its name and when
+const exAgo=t=>'Exported '+(ago(t)==='today'?new Date(t*1000).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}):ago(t));   // review.py Export
 function tile(v){
-  return `<div class="dt" ${goAttrs(v)} ${dragAttrs('videos',v.dir,v.name,v.thumb)}>${picArea(v)}${vName(v)}<div class="mt">${[ui.fold.videos?'':(fd('videos').folders.find(f=>f.id===inFold('videos',v.dir))||{}).name,ago(v.updated)].filter(Boolean).map(esc).join(' · ')}</div></div>`;
+  return `<div class="dt" ${goAttrs(v)} ${dragAttrs('videos',v.dir,v.name,v.thumb)}>${picArea(v)}${vName(v)}<div class="mt">${[ui.fold.videos?'':(fd('videos').folders.find(f=>f.id===inFold('videos',v.dir))||{}).name,v.exported?exAgo(v.exported):ago(v.updated)].filter(Boolean).map(esc).join(' · ')}</div></div>`;
 }
 function checkCards(){
   const bad=[];for(const c of document.querySelectorAll('.vi,.cs,.pc,.dt')){const r=c.getBoundingClientRect();
@@ -2299,10 +2388,15 @@ function vVideos(){
       ${vids.length?cardRows(vids):'<div class="none">Nothing in this folder yet. Drag a video onto it in the sidebar. Or open a video\'s ⋯ menu and pick Move to folder.</div><button class="b2 s" style="align-self:flex-start" onclick="ui.fold.videos=null;render()">See all your videos</button>'}</div>`}
   const now=vids.filter(v=>vPh(v)!=='done'),done=vids.filter(v=>vPh(v)==='done'),filed=all.length-vids.length,lede=vSum(vids)+(filed?` ${filed} in folders.`:'');
   const fit=perRow();
-  return `<div class="pgc"><div class="row" style="justify-content:space-between;align-items:flex-start;gap:16px"><div class="ph"><h1>Your videos</h1>${all.length?`<p>${lede}</p>`:''}</div><div class="row hact">${newFoldBtn('videos')}</div></div>${editTrashRow()}
+  return `<div class="pgc"><div class="row" style="justify-content:space-between;align-items:flex-start;gap:16px"><div class="ph"><h1>Your videos</h1>${all.length?`<p>${lede}</p>`:''}</div><div class="row hact">${newFoldBtn('videos')}</div></div>${editTrashRow()}${reviewRows()}
     ${now.length?`<div class="sec2"><div class="sh"><b>Now</b></div>${cardRows(now)}</div>`:''}
     ${done.length?`<div class="sec2"><div class="sh"><b>Done</b>${seeAll('done',done.length,fit)}</div><div class="dts">${(ui.exp.done?done:done.slice(0,fit)).map(tile).join('')}</div></div>`:''}
     ${all.length?(vids.length?'':'<div class="none">Every video is in a folder. Open one in the sidebar.</div>'):`<div class="none">No videos yet. Pick a clip to make your first one.</div><button class="b1" style="align-self:flex-start" onclick="rgo('new')">New video</button>`}</div>`;
+}
+// Rules to review: videos whose finished-edit rules wait for a tick, one line each, opening that video's page
+function reviewRows(){
+  const rs=L.to_review||[];if(!rs.length)return '';
+  return `<div class="sec2"><div class="sh"><b>Rules to review</b></div><div style="border:1px solid var(--line);border-radius:12px;overflow:hidden">${rs.map(r=>`<button class="brow2" onclick="location.href=${J(r.url)}"><span class="grow">${esc(r.title)}</span><span class="t2">${r.count} rule${r.count===1?'':'s'}</span>${ic('chev',16,2)}</button>`).join('')}</div></div>`;
 }
 function editTrashRow(){
   const v=ui.edittrash&&L.videos.find(x=>x.dir===ui.edittrash);if(!v)return ui.editmsg?`<div class="msg bad">${CROSS}<span>${esc(ui.editmsg)}</span></div>`:'';
@@ -2312,7 +2406,7 @@ async function trashEdit(dir){const r=await post('/edit/trash',{dir});ui.edittra
 // ---------------------------------------------------------------- the app shell (Paper "P App: main")
 // A labelled sidebar (brand, New video, Home / Your videos / My styles, video folders, the live job, Settings,
 // theme), or the icon rail: collapsed by the toggle (remembered in this browser) or always under 1100 px wide.
-const IC={file:'<path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7z"/><path d="M14 3v4h4"/>',home:'<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
+const IC={heart:'<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',file:'<path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7z"/><path d="M14 3v4h4"/>',home:'<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
  videos:'<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M10 9.2v5.6l4.6-2.8z"/>',styles:'<path d="M12 3 3 8l9 5 9-5z"/><path d="M3 13l9 5 9-5"/>',
  folder:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
  upload:'<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>',
@@ -2329,6 +2423,7 @@ const IC={file:'<path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1
   play:'<path d="M8 5.5v13l10.5-6.5z"/>',
   term:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/>'};
 IC.skill='<path d="M13 3 5 13.5h6l-1 7.5 8-10.5h-6z"/>';
+IC.brand='<path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.8 2-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.8 1.8-1.8H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/><circle cx="7.5" cy="11.5" r="1"/><circle cx="10" cy="7.5" r="1"/><circle cx="14.5" cy="7.5" r="1"/>';
 Object.assign(IC,IC2);
 const ic=(k,px=18,sw=1.8)=>`<svg width="${px}" height="${px}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k]}</svg>`;
 const DOTS='<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>';
@@ -2397,10 +2492,10 @@ function sideHTML(){
     const it=(k,label,on,js,extra='')=>`<button class="rl-it ${on?'on':''}" onclick="${js}" ${extra}><span class="ic">${ic(k,20,1.9)}</span>${label}</button>`;
     return `<button class="rl-pan" data-home onclick="goHome()" title="Home" aria-label="cooked. home">${PAN(24)}</button>${tog}
       <button class="rl-it rl-new" onclick="rgo('new')"><span class="ic">${ic('plus',20,2.2)}</span>New</button><div style="height:10px;flex-shrink:0"></div>
-      ${it('home','Home',cur==='home','goHome()')}${it('videos','Videos',cur==='videos',vgo,dropAttrs('videos',null))}${it('styles','Styles',onS,"rgo('mystyle')")}${it('skill','Skills',cur==='skills',"rgo('skills')")}${it('term','Claude',cur==='claude',"rgo('claude')")}
+      ${it('home','Home',cur==='home','goHome()')}${it('videos','Videos',cur==='videos',vgo,dropAttrs('videos',null))}${it('styles','Styles',onS,"rgo('mystyle')")}${it('brand','Brand',cur==='brand',"rgo('brand')")}${it('skill','Skills',cur==='skills',"rgo('skills')")}${it('term','Claude',cur==='claude',"rgo('claude')")}
       <div class="sb-sp"></div>
       ${ji?`<button class="rl-it rl-job" onclick="${ji.go}" title="${esc(ji.label+': '+ji.text)}"><span class="ic">${ringSvg(ji.frac)}${ji.n}</span>${ji.short}</button>`:''}
-      ${it('upload',updLabel(true),false,"sbUpd()",updBusy()?'disabled':'')}${it('gear','Settings',cur==='settings',"rgo('settings')")}${thm}`;
+      ${it('heart','Support',false,"supportGo()")}${it('upload',updLabel(true),false,"sbUpd()",updBusy()?'disabled':'')}${it('gear','Settings',cur==='settings',"rgo('settings')")}${thm}`;
   }
   const cnt=(k,id)=>Object.entries(fd(k).items).filter(([d,f])=>f===id&&(k==='videos'?vids.some(v=>v.dir===d):st.some(c=>c.id===d))).length;
   const inp=(e,ph)=>`<input id="fold-name" value="${esc(e.val||'')}" placeholder="${ph}" maxlength="40" aria-label="Folder name" onclick="event.stopPropagation()" oninput="(ui.newfold||ui.renfold).val=this.value" onkeydown="event.stopPropagation();if(event.key==='Enter')foldSave();if(event.key==='Escape'){ui.newfold=ui.renfold=null;render()}">`;
@@ -2415,6 +2510,7 @@ function sideHTML(){
     <nav class="sb-nav"><button class="sb-row ${cur==='home'?'on':''}" onclick="goHome()">${ic('home')}<span class="lb">Home</span></button>
       <button class="sb-row ${cur==='videos'&&!ui.fold.videos?'on':''}" onclick="${vgo}" ${dropAttrs('videos',null)}>${ic('videos')}<span class="lb">Your videos</span><span class="n">${vids.filter(v=>!inFold('videos',v.dir)).length}</span></button>
       <button class="sb-row ${onS?'on':''}" onclick="rgo('mystyle')">${ic('styles')}<span class="lb">Styles</span><span class="n">${st.filter(c=>!inFold('styles',c.id)).length}</span></button>
+      <button class="sb-row ${cur==='brand'?'on':''}" onclick="rgo('brand')">${ic('brand')}<span class="lb">Brand</span></button>
       <button class="sb-row ${cur==='skills'?'on':''}" onclick="rgo('skills')">${ic('skill')}<span class="lb">Skills</span></button>
       <button class="sb-row ${cur==='claude'?'on':''}" onclick="rgo('claude')">${ic('term')}<span class="lb">Claude</span>${clRunning()?`<span class="n">${clRunning()} running</span>`:''}</button></nav>
     <div class="sb-fold"><div class="sb-fh">Folders<button class="sb-add" title="New folder" aria-label="New folder" onclick="newFolder(null,null,rv==='mystyle'||rv==='stylepage'?'styles':'videos')">${ic('plus',12,2.4)}</button></div>
@@ -2424,6 +2520,7 @@ function sideHTML(){
     ${rail?'':updCard()}
     ${gsBlock()}
     ${updRow()}
+    <button class="sb-row" onclick="supportGo()" title="Opens Stripe in a new tab">${ic('heart')}<span class="lb">Support cooked.</span></button>
     <div class="sb-bot"><button class="sb-row ${cur==='settings'?'on':''}" onclick="rgo('settings')" ${upd?'title="A new version is out"':''}>${ic('gear')}<span class="lb">Settings</span>${upd?'<span class="sdot"></span>':''}</button>${thm}</div>`;
 }
 // a question for a video whose editor tab has it (askhook "elsewhere"): one row on Home and in the sidebar job card
@@ -2455,7 +2552,7 @@ function subMenu(kind,item,name){
   return `<button class="hasub ${ui.sub?'on':''}" onclick="ui.sub=!ui.sub;render()">${ic('folder',16)}<span class="lb">Move to folder</span>${ic('chev',14,2)}</button>${ui.sub?`<div class="cmenu sub">${kind==='styles'?'<div class="mh">Style folders</div>':''}${F.folders.map(f=>`<button onclick="ui.cmenu=null;moveTo('${kind}',${J(item)},${J(f.id)},${J(name)})">${ic(kind==='styles'?'styles':'folder',16)}<span class="lb">${esc(f.name)}</span>${f.id===cur?ic('check',14,2.4):`<span class="n">${n(f.id)}</span>`}</button>`).join('')}${F.folders.length?'<hr>':''}<button onclick="ui.cmenu=null;${nf}">${ic('plus',16)}<span class="lb">New folder</span></button>${cf?`<button onclick="ui.cmenu=null;moveTo('${kind}',${J(item)},null,${J(name)})">${ic('minus',16)}<span class="lb">Take out of ${esc(cf.name)}</span></button>`:''}</div>`:''}`;
 }
 const vMenu=v=>dotsBtn('v:'+v.dir,'More for this video')+cMenu('v:'+v.dir,[['Rename',`renVid(${J(v.dir)},${J(v.name)})`,'pencil'],['Remove from this list',`hideEdit(${J(v.dir)})`,'minus'],ui.cmenu==='v:'+v.dir&&subMenu('videos',v.dir,v.name),
-  v.status==='done'&&v.media&&['Download',`location.href=${J(v.media)}`,'down'],'hr',['Move to Trash',`askTrash(${J(v.dir)})`,'trash']]);
+  v.status==='done'&&v.media&&['Download',`location.href=${J(v.media)}`,'down'],v.exported&&['Show export in Finder',`post('/reveal',{export:${J(v.dir)}})`,'folder'],'hr',['Move to Trash',`askTrash(${J(v.dir)})`,'trash']]);
 // ---- folders (Your videos in the sidebar, My styles on its page): folders.json through /folder/*
 const fd=k=>(L&&L.folders||{})[k]||{folders:[],items:{}};
 const inFold=(k,item)=>{const F=fd(k),f=F.items[item];return F.folders.some(x=>x.id===f)?f:null};
@@ -2574,7 +2671,7 @@ function stUpdate(){
   const line=u.checking?'Checking...':u.newer?'A new version is out':u.offline?'Could not reach GitHub':u.latest?'Up to date'+(when?' · '+when:''):'';
   return `<div class="scd"><div class="hd"><b>Updates</b><span class="ss">${ok?OKTICK:''}${line}</span></div>
     <div class="kvs"><div><span>Installed</span><b>${esc(u.installed||'?')}</b></div><div><span>Latest</span><b>${esc(u.latest||'?')}</b></div></div>
-    ${u.dev?'':'<div class="t2" style="white-space:normal">Turn on auto-updates: type <b>/plugin</b>, open Marketplaces, pick nextwork, choose Enable auto-update.</div>'}
+    ${u.dev||u.fork?'':`<label class="srow" style="cursor:pointer"><div><div>Install new versions by themselves</div><div class="t2" style="white-space:normal">While nothing is being made. Open pages refresh on their own.</div></div><input type="checkbox" class="st-check" ${S.auto_update!==false?'checked':''} onchange="setAutoUpd(this.checked)"></label>`}
     ${u.newer&&(u.notes||[]).length?`<div><div class="t2">What changed</div>${u.notes.map(n=>`<div class="dash">${esc(n)}</div>`).join('')}</div>`:''}
     ${u.fork?'<div class="t2" style="white-space:normal">Your own copy (a fork): ask Claude Code to update my editor.</div>':''}
     <div class="lks">${u.newer&&!u.fork?`<button class="b1 s" ${busy?'disabled':''} onclick="stDoUpdate()">${busy?'Updating...':'Update'}</button>`:`<button class="b2 s" ${u.checking?'disabled':''} onclick="stCheckUpd()">Check now</button>`}<a href="https://github.com/nextwork-projects/ai-video-editor-cooked/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Full changelog</a></div>
@@ -2593,10 +2690,11 @@ async function sbUpd(){const u=S.update||{};if(u.newer&&!u.fork)return stDoUpdat
 function updCard(){
   const u=S.update||{},j=latest('update'),busy=j&&j.state==='taken',done=j&&j.state==='done'&&Date.now()/1000-(j.finished||0)<300;
   if(busy)return `<div class="sb-upd"><div><b>${SPIN}Updating cooked.</b><span>${esc(((j.steps||[]).at(-1)||{}).text||'Starting')}</span></div></div>`;
-  if(done)return `<div class="sb-upd"><div><b>Updated${(j.result||{}).version?' to '+esc(j.result.version):''}</b><span>Type /reload-plugins in Claude Code to load it.</span></div></div>`;
+  if(done)return `<div class="sb-upd"><div><b>Updated${(j.result||{}).version?' to '+esc(j.result.version):''}</b><span>${(S.just_updated||{}).notes&&S.just_updated.notes[0]?esc(S.just_updated.notes[0])+' ':''}Type /reload-plugins in Claude Code to load it.</span></div></div>`;
   if(!u.newer||u.fork)return '';
   return `<div class="sb-upd"><div><b>New version ${esc(u.latest)}</b><span>${esc((u.notes||[])[0]||'A new version of cooked. is out.')}</span></div><button class="sb-updb" onclick="stDoUpdate()">Update now</button></div>`;
 }
+async function setAutoUpd(on){await post('/update/auto',{on});await load()}
 async function stDoUpdate(){const r=await post('/job',{type:'update'});if(!r._ok)toast(r.error||'That did not start.');await load()}
 // Check now: the check runs on the server; the card follows it until it is done (GitHub can take a few seconds)
 async function stCheckUpd(){await post('/update/check',{});for(let i=0;i<20;i++){await load();render();if(!(S.update||{}).checking)break;await new Promise(r=>setTimeout(r,500))}}
@@ -2617,13 +2715,30 @@ function stLook(){
   const sw={light:'<i style="background:#FAFAF9"></i>',dark:'<i style="background:#161413"></i>',system:'<i style="background:linear-gradient(135deg,#FAFAF9 50%,#161413 50%)"></i>'};
   return `<div class="scd" style="flex-direction:row;align-items:center;justify-content:space-between;padding:16px 20px"><b style="font-size:17px;line-height:22px">Theme</b><div class="seg3">${['light','dark','system'].map(t=>`<button class="${cur===t?'on':''}" onclick="stTheme('${t}')">${sw[t]}${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}</div></div>`;
 }
+// the editor's keyboard shortcuts: the same editor as the review page's "?" sheet, saved for every video (shortcuts.py)
+function stKeys(){
+  return `<div class="scd" style="flex-direction:row;align-items:center;justify-content:space-between;padding:16px 20px"><div style="min-width:0"><b style="font-size:17px;line-height:22px">Keyboard shortcuts</b><div class="t2" style="white-space:normal">The keys the video editor uses. Every open video picks up a change.</div></div><button class="b2 s" onclick="kmOpen()">Edit</button></div>`}
+function kmOpen(){document.getElementById('kmdlg').showModal()}
 function vSettings(){
   return `<div class="pgc"><div class="ph"><h1>Settings</h1><p>Keys, updates, where your videos live, and the look.</p></div><div class="sgrid">
     <div class="scol"><div class="scd" style="gap:16px"><div class="hd"><b>Keys</b><span class="st-lock">${ic('lock',14)}Saved on this computer only</span></div>${KEYS.map(stKey).join('')}${stModal()}</div>${stPost()}</div>
-    <div class="scol">${stUpdate()}${stFolder()}${stLook()}${stAlerts()}
+    <div class="scol">${stUpdate()}${stSupport()}${stFolder()}${stLook()}${stKeys()}${stAlerts()}
       <div class="scd"><label class="srow" style="cursor:pointer"><div><div>Recent clips</div><div class="t2">From Movies, Desktop and Downloads</div></div><input type="checkbox" class="st-check" ${R&&R.scan_home?'checked':''} onchange="scanHome(this.checked)"></label>
         ${toolsRow()}</div></div></div></div>`;
 }
+// support: the Stripe link (pay what you want) in the sidebar, in Settings and, once a few videos are done, one popup that
+// asks again 30 days after Not now, 180 after a donation, and never after Don't ask again (state.json "support")
+const SUPPORT_URL='https://buy.stripe.com/dRmaEXePO1nf33C5p55Vu04',SUPP_COPY='cooked. is free to use. If it saves you hours of editing, you can chip in to help keep it going.';
+function stSupport(){return `<div class="scd"><div class="hd"><b>Support cooked.</b></div><div class="t2" style="white-space:normal">${SUPP_COPY}</div><div class="lks"><button class="b1 s" onclick="supportGo()">${ic('heart',14)}Support cooked.</button></div></div>`}
+function supportGo(){window.open(SUPPORT_URL,'_blank','noopener');supportAct('gave')}
+async function supportAct(act){ui.supp=false;ui.suppSeen=true;await post('/support',{act});await load();render()}
+function suppDue(){const s=S.support||{},now=Date.now()/1000,done=((L&&L.videos)||[]).filter(v=>vPh(v)==='done').length;
+  return !ui.suppSeen&&!s.never&&done>=2&&now>(s.until||0)}
+function suppModal(){return `<div class="modalbg" onclick="if(event.target===this)supportAct('later')"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="stitle" style="width:min(460px,100%)">
+    <span style="display:grid;place-items:center;width:44px;height:44px;border-radius:12px;background:var(--card)">${ic('heart',22)}</span>
+    <b id="stitle">Enjoying cooked.?</b><p>${SUPP_COPY}</p>
+    <div class="row" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><button class="hlink" style="font-size:13px;color:var(--t2)" onclick="supportAct('never')">Don't ask again</button>
+      <span class="row" style="gap:12px"><button class="b2" onclick="supportAct('later')">Not now</button><button class="b1" onclick="supportGo()">Support cooked.</button></span></div></div></div>`}
 // Alerts: the chime (this browser only) and system notices while the tab is hidden; permission only from the button
 function stAlerts(){
   const A=window.aveAlert,N=window.Notification?Notification.permission:'none';
@@ -2674,11 +2789,12 @@ const ZOOMILL={none:'<i class="zb"></i>',smooth:'<i class="zb dash"></i><i class
 const CUTILL={relaxed:[22,16,26,14,18],natural:[24,7,28,6,20],tight:[26,0,30,0,22]};
 function rrender(){
   if(rv==='settings'&&!(ui.diskAt>Date.now()-10000)){ui.diskAt=Date.now();loadDisk()}   // free space is live: read again every 10 s
-  let h=(rv==='stylepage'?vStylePage():rv==='new'?vNew():rv==='style'?vStyle():rv==='videos'?vVideos():rv==='mystyle'?vMyStyle():rv==='skills'?vSkills():rv==='claude'?vClaude():rv==='settings'?vSettings():vHome());
+  let h=(rv==='stylepage'?vStylePage():rv==='new'?vNew():rv==='style'?vStyle():rv==='videos'?vVideos():rv==='mystyle'?vMyStyle():rv==='skills'?vSkills():rv==='claude'?vClaude():rv==='brand'?vBrand():rv==='settings'?vSettings():vHome());
   if(rv==='home'&&askRow())h=h.replace(/^\s*(<div class="pgc[^"]*">)/,'$1'+askRow());   // Home's first row
-  $('#main').classList.toggle('pg',['home','videos','settings','mystyle','style','stylepage','skills','claude'].includes(rv));
+  $('#main').classList.toggle('pg',['home','videos','settings','mystyle','style','stylepage','skills','claude','brand'].includes(rv));
   paint($('#main'),h,rv+'|'+ui.sp);$('#main').classList.toggle('spwrap',rv==='stylepage');
-  const md=ui.skdel?skDelModal():ui.del?delModal():ui.create?createModal():ui.bconn?bconnModal():'';paint($('#modal'),md,'m');document.documentElement.style.overflow=md?'hidden':'';$('#main').classList.toggle('hmain',rv==='home');
+  if(!ui.supp&&S&&L&&!ui.create&&!ui.del&&!ui.skdel&&!ui.bconn&&suppDue()){ui.supp=true;ui.suppSeen=true}
+  const md=ui.skdel?skDelModal():ui.del?delModal():ui.create?createModal():ui.bconn?bconnModal():ui.supp?suppModal():'';paint($('#modal'),md,'m');document.documentElement.style.overflow=md?'hidden':'';$('#main').classList.toggle('hmain',rv==='home');
   if(rv==='mystyle'||rv==='style')flashBuilt();
   const o=$('#order');if(o)o.querySelectorAll('[draggable]').forEach(el=>{
     el.ondragstart=e=>{e.dataTransfer.setData('text/plain',el.dataset.i)};el.ondragover=e=>e.preventDefault();
@@ -2789,6 +2905,9 @@ try{const k=JSON.parse(sessionStorage.getItem('ave-home-keep')||'null');sessionS
 window.addEventListener('dragover',e=>e.preventDefault());window.addEventListener('drop',e=>e.preventDefault());
 load().then(loadRecent).then(loadBroll);setInterval(load,1500);setInterval(loadLib,4000);
 </script>
+<dialog id="kmdlg" aria-label="keyboard shortcuts"><div class="kmh"><b>Keyboard shortcuts</b><button class="b2 s" onclick="this.closest('dialog').close()">Done</button></div><div id="kmbody"></div></dialog>
+<script src="/shortcuts.js"></script><script>KM.editor(document.getElementById('kmbody'));
+document.getElementById('kmdlg').addEventListener('cancel',e=>{if(KM.recording())e.preventDefault()})   // Esc while recording cancels the recording, not the dialog</script>
 <script src="/ask.js"></script>
 </body>
 </html>

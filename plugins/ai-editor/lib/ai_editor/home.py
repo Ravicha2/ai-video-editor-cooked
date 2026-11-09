@@ -84,7 +84,9 @@ from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import askhook  # noqa: E402
+import shortcuts  # noqa: E402
 import assets  # noqa: E402
+import brandkit  # noqa: E402
 import broll  # noqa: E402
 import custom  # noqa: E402
 import keys  # noqa: E402
@@ -1255,10 +1257,47 @@ def update_info():
             "checking": _UPD["busy"], "checked": _UPD["at"] or None, "offline": bool(_UPD.get("offline")), "dev": dev, "fork": fork}
 
 
+def auto_update(d, u, start=None):
+    """A new version installs itself while this window or a video page is open: never for a checkout or a fork, not after
+    Settings turned it off, and only while nothing is being made (no job running, no video's Claude working). One try per
+    version: a failure leaves the Update button. True when it started."""
+    if d.get("auto_update") is False or not u.get("newer") or u.get("dev") or u.get("fork") or d.get("auto_tried") == u["latest"]:
+        return False
+    if time.time() - _UPD.get("auto_at", 0) < 60:   # the library's videos are read at most once a minute, not on every poll
+        return False
+    _UPD["auto_at"] = time.time()
+    if any(j.get("state") in ("queued", "taken") for j in d.get("jobs") or []):
+        return False
+    import review
+    if any(review.claude_state(Path(e["dir"]))["state"] == "working" for e in library.entries()):
+        return False
+    update(lambda x: x.__setitem__("auto_tried", u["latest"]))
+    (start or start_modal)("update")
+    return True
+
+
 def trash(p):
     """To the Trash (Finder, Recycle Bin, gio). True when the file is gone from where it was."""
     r = subprocess.run(library.trash_cmd(p), capture_output=True, timeout=60)
     return r.returncode == 0 and not Path(p).exists()
+
+
+def to_review(vids):
+    """Videos view, Rules to review: the videos whose learn panel waits on the user (learn state proposed), newest first,
+    as {slug, title, count, url}. One stuck on "reading" with nobody listening gets cooked.'s own learn job."""
+    import review
+    out = []
+    for v in vids:
+        lr = (library._review(Path(v["dir"])) or {}).get("learn") or {}
+        if lr.get("state") == "proposed" and lr.get("rules"):
+            out.append({"slug": Path(v["dir"]).name, "title": v["name"], "count": len(lr["rules"]),
+                        "url": "/review?dir=" + quote(v["dir"])})
+        elif lr.get("state") == "reading":
+            try:
+                review.start_learn_job(Path(v["dir"]), stuck=True)
+            except Exception:   # noqa: BLE001  the list shows either way
+                pass
+    return out
 
 
 def recent_list(st):
@@ -1612,7 +1651,10 @@ def run_home(kind, jid):
     except OSError as e:
         err = f"Could not start the setup step: {e}"
     finish(err)
-    if kind == "update" and not err:
+    if kind == "update" and not err:   # What's new for the pages once they are back: the notes are in memory only until the restart
+        job = next((j for j in read()["jobs"] if j["id"] == jid), {})
+        update(lambda d: d.__setitem__("just_updated", {"version": job.get("result", {}).get("version"), "notes": list(_UPD.get("notes") or []),
+                                                        "at": time.time()}))
         restart_on(next((j["result"].get("path") for j in read()["jobs"] if j["id"] == jid), None))
 
 
@@ -2043,6 +2085,10 @@ def make_handler(token):
             path = unquote(urlsplit(self.path).path)
             if askhook.route(self, "GET", path, {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}):   # Claude's questions
                 return
+            if shortcuts.route(self, "GET", path):   # the keyboard shortcuts, Settings edits them (shortcuts.py)
+                return
+            if brandkit.route(self, "GET", path, parse_qs(urlsplit(self.path).query)):   # the Brand page
+                return
             if path == "/":
                 return self.send(200, themed(HTML.read_bytes()), "text/html; charset=utf-8", cookie=True)
             if path == "/post/accounts":   # Settings, Auto-post your videos: asked when the card opens and on return from a sign-in, never per poll
@@ -2061,10 +2107,11 @@ def make_handler(token):
                 d["busy"] = bz and {"id": bz["id"], "name": job_name(bz)}
                 d["profile"] = (home().parent / "profile.json").exists()   # set up before: a returning user
                 d["update"] = {**update_info(), "claude": d.get("claude_v")}   # the version the last Claude command ran
+                auto_update(d, d["update"])
                 d["getting_started"] = getting_started(d)
                 import launcher   # a Claude of its own per video only where a terminal window can be opened
                 d["new_claude"] = bool(launcher.terminal(d["root"], ["claude"], platform.system()))
-                d["page"] = f'{live.page_version(HTML, HTML.with_name("ask.js"))}-{my_version()}'   # the tab reloads when this changes (an update too)
+                d["page"] = f'{live.page_version(HTML, HTML.with_name("ask.js"), shortcuts.JS)}-{my_version()}'   # the tab reloads when this changes (an update too)
                 lk = d.get("lookup") or {}
                 if lk.get("handle"):
                     lk["listing"] = listing(d["root"], lk["handle"])
@@ -2092,6 +2139,7 @@ def make_handler(token):
                     ms = list(ex.map(lambda v: library.meta(v["video"]) if v["video"] else {}, vids))
                 for v in vids:
                     v["phase"] = phase(v)
+                    v["exported"] = max((f.stat().st_mtime for f in (Path(v["dir"]) / "exports").glob("*.mp4")), default=None)   # review.py Export
                 for v, m in zip(vids, ms):
                     a = (raw.get(v["dir"]) or {}).get("args", {}).get("aspect")
                     v["duration"] = m.get("duration") if v["status"] in ("ready", "done") else None
@@ -2106,7 +2154,7 @@ def make_handler(token):
                 return self.send(200, {"path": root, "place": place(root), "env": bool(os.environ.get("AI_EDITOR_LIBRARY", "").strip()),
                                        "custom": str(custom.path(False)), "videos": vids, "folders": folders(),
                                        "styles": [c for c in cards if c["id"] not in arch], "archived_styles": [c for c in cards if c["id"] in arch],
-                                       "default_style": default_style(cards)})
+                                       "default_style": default_style(cards), "to_review": to_review(vids)})
             if path == "/skills":   # the Skills view and New style, "Use your own skill"
                 return self.send(200, editing_skills(read()["root"]))
             if path == "/recent":
@@ -2236,11 +2284,15 @@ def make_handler(token):
                 with live.busy():   # no live-reload restart under an upload
                     return self.upload() if path == "/upload" else self.cover()
             try:
-                cap = askhook.MAX_BODY if path in ("/ask/answer", "/job") else 1 << 20   # an answer or a new video can carry images
+                cap = askhook.MAX_BODY if path in ("/ask/answer", "/job", "/brand/claude") else 1 << 20   # an answer or a new video can carry images
                 body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), cap)) or b"{}")
             except ValueError:
                 return self.send(400, {"error": "not json"})
             if askhook.route(self, "POST", path, {}, body):
+                return
+            if shortcuts.route(self, "POST", path, {}, body):
+                return
+            if brandkit.route(self, "POST", path, {}, body):
                 return
             if path == "/post/connect":   # one more account: Zernio's sign-in opens in a new tab, Settings re-lists on return
                 try:
@@ -2300,6 +2352,13 @@ def make_handler(token):
             if path == "/job":
                 return self.job(body)
             if path == "/reveal":   # Show in Finder / Explorer: the library, one of its videos, or the custom folder
+                if body.get("export"):   # a video's last export (review.py Export), picked in <edit>/exports/
+                    d = Path(str(body["export"])).resolve()
+                    fs = sorted((d / "exports").glob("*.mp4"), key=lambda f: f.stat().st_mtime) if d in library.edit_dirs() else []
+                    if not fs:
+                        return self.send(404, {})
+                    subprocess.Popen(library.reveal_cmd(fs[-1]), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    return self.send(200, {})
                 p = custom.path().resolve() if body.get("custom") else Path(str(body.get("dir") or read()["root"])).resolve()
                 if p not in (Path(read()["root"]).resolve(), custom.path(False).resolve()) and p not in library.edit_dirs():
                     return self.send(400, {})
@@ -2439,6 +2498,16 @@ def make_handler(token):
                     return self.send(200, {"ok": True, "id": new_own_style(read()["root"], body.get("name"), sk)})
                 except ValueError as e:
                     return self.send(400, {"error": str(e)})
+            if path == "/style/from-video":   # New style, "From a video": {dir, name}, a copy of the style that video used
+                import review
+                d = Path(str(body.get("dir") or "")).resolve()
+                if d not in library.edit_dirs() or not (d / "review.json").exists():
+                    return self.send(404, {"error": "That video is gone."})
+                try:
+                    ns_ = review.new_style_from(d, body.get("name"))
+                except ValueError as e:
+                    return self.send(400, {"error": str(e) or "That name is taken. Pick another."})
+                return self.send(200, {"ok": True, "id": "@" + Path(ns_["id"]).parent.name, "name": ns_["name"]})
             if path == "/style/combine":   # New style, "Combine styles": {ids: [2+], name?, text?}
                 d = read()
                 try:
@@ -2543,6 +2612,20 @@ def make_handler(token):
             if path == "/broll/add":   # Connect a folder: a Drive folder picked in the browser, or a path typed in
                 err = broll.add(body.get("name"), body.get("folder"))
                 return self.send(400 if err else 200, {"ok": not err, "msg": err})
+            if path == "/update/auto":   # Settings: new versions install themselves, or wait for the Update button
+                update(lambda d: d.__setitem__("auto_update", body.get("on") is not False))
+                return self.send(200, {})
+            if path == "/support":   # the support popup: Not now asks again in 30 days, a donation in 180, Don't ask again never
+                act = body.get("act")
+                if act not in ("later", "gave", "never"):
+                    return self.send(400, {"error": "act: later, gave or never"})
+
+                def f(d):
+                    sp = d.setdefault("support", {})
+                    sp.update(never=True) if act == "never" else sp.update(until=time.time() + (180 if act == "gave" else 30) * 86400)
+                    sp["last"] = act
+                update(f)
+                return self.send(200, {"ok": True})
             if path == "/scanhome":   # the one-time opt-in: recent clips from Movies, Desktop and Downloads
                 update(lambda d: d.__setitem__("scan_home", body.get("on") is True))
                 return self.send(200, {})
@@ -3099,6 +3182,7 @@ def may_refresh(plugin, home_dir=None, env=None):
 
 # ---------------------------------------------------------------- demo
 def demo():
+    real_auto, globals()["auto_update"] = auto_update, lambda *a, **k: False   # the faked new version below must not install for real
     import contextlib
     import io
     import shutil
@@ -3172,6 +3256,31 @@ def demo():
     assert get("/state")["theme"] == "system" and b"<html data-theme" not in urllib.request.urlopen(base + "/?t=" + tok).read()
     assert post("/theme", {"theme": "light"})["theme"] == "light" and get("/state")["theme"] == "light"
     assert b'<html data-theme="light" lang="en">' in urllib.request.urlopen(base + "/?t=" + tok).read()
+    # the Brand page (brandkit.py): the template, import / Edit > Save, the switch, Make one with Claude on a stub CLI
+    assert get("/brand")["kit"] is None and b"## Colours" in urllib.request.urlopen(base + "/brand/template?t=" + tok).read()
+    bs = post("/brand/save", {"md": "## Colours\n- Background: #F5F2EC\n- Accent: #E5482C\n## Fonts\n- Display: Fraunces\n- Body: IBM Plex Sans\n"})
+    assert bs["use"] and [c["role"] for c in bs["kit"]["colors"]] == ["ground", "accent"] and bs["kit"]["fonts"]["body"] == "IBM Plex Sans", bs
+    assert json.loads((tmp / "home" / "profile.json").read_text(encoding="utf-8"))["brand"]["font_body"] == "IBM Plex Sans"
+    assert post("/brand/use", {"on": False})["use"] is False and post("/brand/use", {"on": True})["use"] is True
+    try:
+        post("/brand/save", {"md": "  "})
+        raise AssertionError("an empty file saved")
+    except urllib.error.HTTPError as e:
+        assert e.code == 400
+    keep_cli = os.environ.get("AI_EDITOR_CLAUDE")
+    os.environ["AI_EDITOR_CLAUDE"] = shutil.which("true") or "/usr/bin/true"
+    try:
+        assert post("/brand/claude", {"url": "example.com", "about": "calm"})["job"]["state"] in ("running", "failed")
+        for _ in range(100):
+            if get("/brand")["job"]["state"] != "running":
+                break
+            time.sleep(0.05)
+        assert "without writing" in get("/brand")["job"]["why"], get("/brand")["job"]
+        assert post("/brand/claude", {"clear": True})["job"] is None
+    finally:
+        os.environ.pop("AI_EDITOR_CLAUDE") if keep_cli is None else os.environ.__setitem__("AI_EDITOR_CLAUDE", keep_cli)
+    (tmp / "home" / "profile.json").unlink()   # the checks below start with no profile
+    shutil.rmtree(tmp / "home" / "brand")
     try:
         post("/theme", {"theme": "pink"})
         raise AssertionError("a made-up theme was saved")
@@ -3185,6 +3294,17 @@ def demo():
         raise AssertionError("a connect link without a key")
     except urllib.error.HTTPError as e:
         assert e.code == 400
+    # the keyboard shortcuts (shortcuts.py): Settings edits the same keys.json every review page reads
+    assert b'src="/shortcuts.js"' in HTML.read_bytes() and b"KM_TABLE" in urllib.request.urlopen(base + "/shortcuts.js?t=" + tok).read()
+    assert get("/keys") == {"keys": {}} and post("/keys", {"action": "play", "combo": "Shift+Space"})["keys"] == {"play": ["Shift+Space"]}
+    assert json.loads((Path(os.environ["AI_EDITOR_HOME"]) / "keys.json").read_text(encoding="utf-8")) == {"play": ["Shift+Space"]}
+    for bad in ({"action": "nope", "combo": "K"}, {"action": "play", "combo": "Mod+W"}, {"reset": "nope"}):
+        try:
+            post("/keys", bad)
+            raise AssertionError(f"took {bad}")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
+    assert post("/keys", {"reset": "play"})["keys"] == {} and post("/keys", {"reset_all": True})["keys"] == {} and get("/keys") == {"keys": {}}
     # Claude's question (askhook.py): the hook posts it, the showing page polls it and answers, the hook clears it
     assert b'src="/ask.js"' in HTML.read_bytes() and b"askq" in urllib.request.urlopen(base + "/ask.js?t=" + tok).read()
     assert askhook.live() == []   # served, but no page has polled yet
@@ -4176,7 +4296,7 @@ def demo():
     assert is_output(root / "edits" / "x" / "render.mp4") and is_output(tmp / "v-edit2.mp4") and is_output(root / "edits" / "x" / "review" / "a.mp4")
     assert is_output(ed / "anything.mp4", [ed]) and not is_output(root / "videos" / "drop.mp4", [ed])
     assert all("raw" in v for v in get("/recent")["videos"])
-    assert get("/state")["page"] == f'{live.page_version(HTML, HTML.with_name("ask.js"))}-{my_version()}', "the tab's reload key"
+    assert get("/state")["page"] == f'{live.page_version(HTML, HTML.with_name("ask.js"), shortcuts.JS)}-{my_version()}', "the tab's reload key"
     # hide or trash a listed clip, remove an edit: only what the page listed, to the Trash (faked here), never a folder
     assert library.trash_cmd("/a b/x.mov", "Darwin")[-1] == "/a b/x.mov" and "item 1 of argv" in " ".join(library.trash_cmd("x", "Darwin"))
     assert library.trash_cmd("C:/x y.mp4", "Windows")[-1] == "C:/x y.mp4" and library.trash_cmd("/x", "Linux") == ["gio", "trash", "/x"]
@@ -4219,6 +4339,29 @@ def demo():
         assert post("/stop", {"edit": str(hid)})["stopped"]
         rv = json.loads((hid / "review.json").read_text(encoding="utf-8"))
         assert not rv["sent"] and rv["stopped"] and rv["events"][-1]["type"] == "stop", rv
+        # Rules to review: a video whose learn panel waits lists first with its rule count; one stuck reading gets the learn job
+        os.environ.setdefault("AI_EDITOR_CLAUDE", shutil.which("true") or "true")   # never the real Claude Code here
+        rv["learn"] = {"state": "proposed", "rules": [{"rule": "a", "section": "cut"}, {"rule": "b", "section": "cut"}]}
+        (hid / "review.json").write_text(json.dumps(rv), encoding="utf-8")
+        assert get("/library")["to_review"] == [{"slug": "hide-me", "title": "hide-me", "count": 2,
+                                                 "url": "/review?dir=" + quote(str(hid.resolve()))}], get("/library")["to_review"]
+        rv["learn"] = {"state": "reading", "at": time.time() - 3600}
+        (hid / "review.json").write_text(json.dumps(rv), encoding="utf-8")
+        assert get("/library")["to_review"] == [] and json.loads((hid / "review.json").read_text(encoding="utf-8"))["learn"]["job"]
+        for _ in range(200):   # the stub CLI posts nothing: the page says Claude could not read the notes
+            if json.loads((hid / "review.json").read_text(encoding="utf-8"))["learn"]["state"] == "failed":
+                break
+            time.sleep(0.05)
+        assert json.loads((hid / "review.json").read_text(encoding="utf-8"))["learn"]["state"] == "failed"
+        # New style, From a video: a copy of the style that video used, named, listed at once
+        fv = post("/style/from-video", {"dir": str(hid), "name": "From hide"})
+        assert fv == {"ok": True, "id": "@own-from-hide", "name": "From hide"} and "@own-from-hide" in [c["id"] for c in get("/library")["styles"]], fv
+        for bad, code in (({"dir": str(tmp), "name": "x"}, 404), ({"dir": str(hid), "name": " "}, 400)):
+            try:
+                post("/style/from-video", bad)
+                raise AssertionError(bad)
+            except urllib.error.HTTPError as e:
+                assert e.code == code, (bad, e.code)
         try:
             post("/stop", {"edit": str(tmp)})
             raise AssertionError("a folder that is not a video")
@@ -4387,6 +4530,42 @@ def demo():
     u = get("/state")["update"]
     assert u["newer"] and u["latest"] == "99.0.0" and u["installed"] == json.loads(PLUGIN_JSON.read_text(encoding="utf-8"))["version"], u
     assert u["notes"] == ["Dark mode in the window"] and vtuple("2.10.0") > vtuple("2.9.1")
+    # a new version installs itself: only while nothing is being made, one try per version, never a checkout, a fork or switched off
+    fresh, tried = {"newer": True, "latest": "99.0.0", "dev": False, "fork": False}, []
+
+    def try_auto(d, u=fresh):
+        _UPD.pop("auto_at", None)
+        return real_auto(d, u, start=tried.append)
+    update(lambda d: d.pop("auto_tried", None))
+    assert not any([try_auto({"auto_update": False}), try_auto({}, {**fresh, "dev": True}), try_auto({}, {**fresh, "fork": True}),
+                    try_auto({}, {**fresh, "newer": False}), try_auto({"jobs": [{"state": "taken"}]}), try_auto({"auto_tried": "99.0.0"})]) and not tried
+    import review as rv
+    keep = library.entries, rv.claude_state
+    library.entries, rv.claude_state = (lambda: [{"dir": "x"}]), (lambda f: {"state": "working"})
+    assert not try_auto({}) and not tried, "a video's Claude is working"
+    library.entries, rv.claude_state = keep[0], (lambda f: {"state": "open"})
+    assert try_auto({}) and tried == ["update"] and read()["auto_tried"] == "99.0.0"
+    assert not real_auto({}, fresh, start=tried.append) and tried == ["update"], "the library is read once a minute at most"
+    rv.claude_state = keep[1]
+    update(lambda d: d.pop("auto_tried", None))
+    post("/update/auto", {"on": False})
+    assert get("/state")["auto_update"] is False
+    post("/update/auto", {"on": True})
+    assert get("/state")["auto_update"] is True
+    # the support popup: Not now waits 30 days, a donation 180, Don't ask again for good
+    post("/support", {"act": "later"})
+    sp = get("/state")["support"]
+    assert 29 * 86400 < sp["until"] - time.time() < 31 * 86400 and sp["last"] == "later", sp
+    post("/support", {"act": "gave"})
+    assert 179 * 86400 < get("/state")["support"]["until"] - time.time() < 181 * 86400
+    post("/support", {"act": "never"})
+    assert get("/state")["support"]["never"] is True
+    try:
+        post("/support", {"act": "spam"})
+        raise AssertionError("an unknown act")
+    except urllib.error.HTTPError as e:
+        assert e.code == 400
+    update(lambda d: d.pop("support", None))
     # Update runs in the window itself (no Claude): a fork is refused (the update skill merges it with the user); any
     # other install runs update.py window, shows its steps, keeps the new version and restarts from its folder
     real_info = update_info
@@ -4417,6 +4596,7 @@ def demo():
         assert j["state"] == "done" and j["owner"] == "home" and j["result"] == {"version": "99.0.0", "path": (tmp / "v99").as_posix()}, j
         assert [s["text"] for s in j["steps"]] == ["Getting the list of new versions", "Updating ai-editor"] and restarted == [(tmp / "v99").as_posix()]
         assert not any(x["type"] == "update" and x["state"] == "queued" for x in read()["jobs"]), "nothing queued for Claude"
+        assert read()["just_updated"]["version"] == "99.0.0" and read()["just_updated"]["notes"] == ["Dark mode in the window"], "What's new survives the restart"
     finally:
         globals().update(UPDATE=real_update, restart_on=real_restart)
         update(lambda d: d.__setitem__("jobs", [j for j in d["jobs"] if j["type"] != "update"]))
