@@ -1410,11 +1410,13 @@ def demo():
         time.sleep(0.01)
         env_save(**good)
         assert ENV.stat().st_mtime_ns == before and env_load() == good
+        # step_warm() reads env.json through this global too: keep it on the temp one, or a machine
+        # that really ran setup answers "up to date" where demo_install_all expects "skipped".
+        demo_install_all()
     ENV = keep_env
     ok, detail, cmd = certs_row(online=False)
     assert ok and "trusted certificates" in detail and cmd, (ok, detail, cmd)
     demo_launcher()
-    demo_install_all()
     print("demo ok")
 
 

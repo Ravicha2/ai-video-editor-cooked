@@ -44,6 +44,7 @@ What changed for every user, newest first.
 - A caption style that already brings a stroke or box no longer gets a dark plate painted behind it.
 - The caption contrast check reads inside a stroked caption's outline instead of the footage beyond it.
 - Fonts load the Thai subset when the family has it, so Thai text is not tofu boxes on the render machine.
+- The setup self-check works on a machine that already ran setup: the demo's warm-up reads its own env.json, not the user's warm stamp.
 
 ## ai-editor 2.7.43, creator-teardown 2.7.43 (2026-11-06)
 - Add audio in the editor. The Sounds panel lists your sounds, the ones you picked for a moment first. Play one to hear it, search, then Add puts it at the playhead or drag it onto the timeline. It goes on the first audio track free there, or a new one.
